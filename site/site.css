@@ -1,0 +1,51 @@
+/* Phone-Cam website: tokens copied from the PC app (pc/ui/app.css). */
+:root, :root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f3f0; --surface: #ffffff; --inset: #eae9e5; --border: rgb(0 0 0 / 0.09);
+  --text: #1b1b1d; --text-muted: #62626a; --accent: #b4510f; --accent-contrast: #ffffff;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 30px -16px rgb(0 0 0 / 0.16);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f0f11; --surface: #18181b; --inset: #222226; --border: rgb(255 255 255 / 0.09);
+  --text: #ececee; --text-muted: #9c9ca5; --accent: #f08a3c; --accent-contrast: #1a1007;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 16px 34px -18px rgb(0 0 0 / 0.8);
+}
+.brand-mark { width: 26px; height: 26px; border-radius: 8px; background: url(favicon.svg) center / cover; }
+.lang-trigger { padding-inline: 14px; }
+
+.hero { padding-block: clamp(32px, 7vw, 88px) clamp(48px, 8vw, 96px); }
+.hero__eyebrow { margin-bottom: 20px; }
+.hero__title { font-size: var(--fs-hero); letter-spacing: -0.055em; line-height: 0.96; max-width: 12ch; }
+.hero__lead { margin-top: clamp(20px, 3vw, 32px); }
+.hero__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: clamp(28px, 4vw, 40px); }
+.hero__note { margin-top: 18px; font-size: 0.9rem; min-height: 1.4em; }
+.hero__window { margin-top: clamp(40px, 7vw, 88px); }
+
+@keyframes into-focus { from { opacity: 0; filter: blur(18px); transform: translateY(0.12em); } to { opacity: 1; filter: blur(0); transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.hero__eyebrow { animation: rise 800ms var(--ease-out) 60ms both; }
+.hero__title { animation: into-focus 1300ms var(--ease-out) 140ms both; }
+.hero__lead { animation: rise 900ms var(--ease-out) 420ms both; }
+.hero__actions { animation: rise 900ms var(--ease-out) 540ms both; }
+.hero__note { animation: rise 900ms var(--ease-out) 640ms both; }
+.hero__window { animation: rise 1100ms var(--ease-out) 300ms both; }
+
+.duo { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(24px, 5vw, 64px); align-items: center; }
+.duo__phone { max-width: 300px; justify-self: center; }
+.duo__phone .window { border-radius: 28px; }
+.duo figcaption { margin-top: 12px; font-size: 0.875rem; color: var(--text-muted); }
+@media (max-width: 760px) { .duo { grid-template-columns: minmax(0, 1fr); } }
+
+.code { display: block; margin-top: 12px; padding: 12px 14px; overflow-x: auto; background: var(--inset); border: 1px solid var(--border); border-radius: 12px; font: 0.875rem/1.5 ui-monospace, "SF Mono", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.faq-wrap { max-width: 52rem; }
+@media (prefers-reduced-motion: reduce) { .hero__eyebrow, .hero__title, .hero__lead, .hero__actions, .hero__note, .hero__window { animation: none; } }
+
+/* Narrow screens (also with large text): icon-only language button, brand may shrink, so the sticky header stays one row. */
+.brand { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+@media (max-width: 520px) {
+  .lang-trigger [data-lang-current] { display: none; }
+  .lang-trigger { padding-inline: 12px; }
+}
+.lang-trigger { min-height: 48px; min-width: 48px; }
+@media (max-width: 520px) { .brand { font-size: 1rem; } }

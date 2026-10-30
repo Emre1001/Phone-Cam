@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="de" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' data:; style-src 'self'; script-src 'self'">
+  <meta name="color-scheme" content="dark light">
+  <title>Phone-Cam</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <script src="/boot.js"></script>
+  <link rel="stylesheet" href="/motion.css">
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/language-picker.css">
+  <link rel="stylesheet" href="/update-dialog.css">
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <button class="icon-btn" id="back" type="button" hidden data-i18n-attr="aria-label:nav.back">
+      <svg viewBox="0 0 24 24" aria-hidden="true" class="flip"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="brand">
+      <img src="/icon.svg" alt="" width="26" height="26">
+      <h1 id="title" data-i18n="app.name">Phone-Cam</h1>
+    </div>
+    <span class="pill" id="pill" role="status"><i class="dot" aria-hidden="true"></i><span id="pill-text"></span></span>
+    <button class="icon-btn" id="open-settings" type="button" data-i18n-attr="aria-label:settings.title">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a7.7 7.7 0 0 0 0-3l1.9-1.5-2-3.4-2.3.9a7.7 7.7 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5a7.7 7.7 0 0 0-2.6 1.5l-2.3-.9-2 3.4 1.9 1.5a7.7 7.7 0 0 0 0 3l-1.9 1.5 2 3.4 2.3-.9a7.7 7.7 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.7 7.7 0 0 0 2.6-1.5l2.3.9 2-3.4z"/></svg>
+    </button>
+  </header>
+
+  <main class="main">
+    <div class="page" id="page">
+
+      <section class="view" id="view-home" aria-labelledby="title">
+        <div class="home">
+          <div class="stage card enter" id="stage">
+            <div class="screen" id="screen">
+              <img id="preview" alt="" hidden>
+              <div class="idle" id="idle">
+                <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="15" y="5" width="18" height="38" rx="5"/><circle cx="24" cy="21" r="5.5"/><path d="M21 37h6"/></svg>
+                <h2 data-i18n="home.waiting.title"></h2>
+                <p data-i18n="home.waiting.text"></p>
+              </div>
+              <span class="live-tag" id="live-tag" hidden><i class="dot" aria-hidden="true"></i><span data-i18n="home.live"></span></span>
+            </div>
+            <dl class="stats" id="stats" hidden>
+              <div><dt data-i18n="stat.phone"></dt><dd id="s-phone"></dd></div>
+              <div><dt data-i18n="stat.via"></dt><dd id="s-via"></dd></div>
+              <div><dt data-i18n="stat.video"></dt><dd id="s-video"></dd></div>
+              <div><dt data-i18n="stat.bitrate"></dt><dd id="s-rate"></dd></div>
+              <div><dt data-i18n="stat.dropped"></dt><dd id="s-drop"></dd></div>
+            </dl>
+            <div class="stage-actions" id="stage-actions" hidden>
+              <button class="btn" type="button" id="disconnect" data-i18n="home.disconnect"></button>
+            </div>
+          </div>
+
+          <div class="side">
+            <section class="card enter" aria-labelledby="h-usb">
+              <h2 class="card-title" id="h-usb" data-i18n="usb.title"></h2>
+              <p class="hint" data-i18n="usb.hint"></p>
+              <ul class="devices" id="usb-list"></ul>
+              <p class="note" id="usb-note" hidden></p>
+            </section>
+
+            <section class="card enter" aria-labelledby="h-wifi">
+              <h2 class="card-title" id="h-wifi" data-i18n="wifi.title"></h2>
+              <p class="hint" data-i18n="wifi.hint"></p>
+              <div class="kv">
+                <span class="k" data-i18n="wifi.address"></span>
+                <span class="v mono" id="ips"></span>
+              </div>
+              <div class="kv">
+                <span class="k" data-i18n="wifi.key"></span>
+                <span class="v mono" id="fingerprint"></span>
+              </div>
+              <div class="kv">
+                <span class="k" data-i18n="wifi.pin"></span>
+                <span class="v pin mono" id="pin"></span>
+                <button class="btn small" type="button" id="new-pin" data-i18n="wifi.newPin"></button>
+              </div>
+              <p class="note error" id="pin-locked" hidden data-i18n="wifi.locked"></p>
+            </section>
+
+            <section class="card enter" aria-labelledby="h-vcam">
+              <h2 class="card-title" id="h-vcam" data-i18n="vcam.title"></h2>
+              <p class="hint" id="vcam-text"></p>
+              <div class="vcam-actions" id="vcam-actions" hidden>
+                <button class="btn primary" type="button" id="vcam-setup" data-i18n="vcam.setup"></button>
+                <label class="check"><input type="checkbox" id="vcam-persist" checked><span data-i18n="vcam.persist"></span></label>
+              </div>
+              <p class="note error" id="vcam-error" hidden></p>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-settings" hidden aria-labelledby="h-settings">
+        <div class="settings">
+          <h2 class="visually-hidden" id="h-settings" data-i18n="settings.title"></h2>
+
+          <section class="group" aria-labelledby="g-look">
+            <h3 class="group-title" id="g-look" data-i18n="settings.appearance"></h3>
+            <div class="card list">
+              <div class="row">
+                <div class="row-text">
+                  <span class="row-label" id="l-theme" data-i18n="settings.theme"></span>
+                  <p class="row-hint" data-i18n="settings.theme.hint"></p>
+                </div>
+                <div class="seg" id="theme-seg" role="radiogroup" aria-labelledby="l-theme">
+                  <span class="seg-thumb" aria-hidden="true"></span>
+                  <button type="button" role="radio" data-theme-pref="system" data-i18n="theme.system"></button>
+                  <button type="button" role="radio" data-theme-pref="light" data-i18n="theme.light"></button>
+                  <button type="button" role="radio" data-theme-pref="dark" data-i18n="theme.dark"></button>
+                </div>
+              </div>
+              <div class="row">
+                <div class="row-text">
+                  <span class="row-label" id="l-lang" data-i18n="settings.language"></span>
+                  <p class="row-hint" data-i18n="settings.language.hint"></p>
+                </div>
+                <button class="lang-trigger" id="lang-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="l-lang">
+                  <span data-lang-current></span>
+                  <svg class="lang-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8l5 5 5-5"/></svg>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="group" aria-labelledby="g-cam">
+            <h3 class="group-title" id="g-cam" data-i18n="settings.camera"></h3>
+            <div class="card list">
+              <div class="row">
+                <div class="row-text">
+                  <label class="row-label" for="pc-name" data-i18n="settings.pcname"></label>
+                  <p class="row-hint" data-i18n="settings.pcname.hint"></p>
+                </div>
+                <input class="field" id="pc-name" type="text" maxlength="40" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="row">
+                <div class="row-text">
+                  <span class="row-label" id="l-rot" data-i18n="settings.rotation"></span>
+                  <p class="row-hint" data-i18n="settings.rotation.hint"></p>
+                </div>
+                <div class="seg" id="rot-seg" role="radiogroup" aria-labelledby="l-rot">
+                  <span class="seg-thumb" aria-hidden="true"></span>
+                  <button type="button" role="radio" data-rot="0">0°</button>
+                  <button type="button" role="radio" data-rot="90">90°</button>
+                  <button type="button" role="radio" data-rot="180">180°</button>
+                  <button type="button" role="radio" data-rot="270">270°</button>
+                </div>
+              </div>
+              <div class="row">
+                <div class="row-text">
+                  <span class="row-label" id="l-mirror" data-i18n="settings.mirror"></span>
+                  <p class="row-hint" data-i18n="settings.mirror.hint"></p>
+                </div>
+                <button class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="l-mirror" id="mirror"><span class="switch-knob"></span></button>
+              </div>
+            </div>
+          </section>
+
+          <section class="group" aria-labelledby="g-updates">
+            <h3 class="group-title" id="g-updates" data-i18n="settings.updates"></h3>
+            <div class="card list">
+              <div class="row">
+                <div class="row-text">
+                  <span class="row-label" data-update-version></span>
+                  <p class="row-hint" data-update-status role="status"></p>
+                </div>
+                <button type="button" class="btn" data-update-check data-i18n="update.check"></button>
+              </div>
+              <div class="row">
+                <div class="row-text">
+                  <span class="row-label" id="l-auto" data-i18n="update.auto"></span>
+                  <p class="row-hint" data-i18n="update.auto.hint"></p>
+                </div>
+                <button class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="l-auto" data-update-auto><span class="switch-knob"></span></button>
+              </div>
+            </div>
+          </section>
+
+          <section class="group">
+            <div class="card list">
+              <div class="row">
+                <div class="row-text">
+                  <span class="row-label" data-i18n="settings.quit"></span>
+                  <p class="row-hint" data-i18n="settings.quit.hint"></p>
+                </div>
+                <button type="button" class="btn danger" id="quit" data-i18n="settings.quit.button"></button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="/i18n.js"></script>
+<script src="/locales/en.js"></script>
+<script src="/locales/de.js"></script>
+<script src="/locales/tr.js"></script>
+<script src="/motion.js"></script>
+<script src="/back-stack.js"></script>
+<script src="/language-picker.js"></script>
+<script src="/update-dialog.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+[package]
+name = "phone-cam"
+version = "0.0.1"
+edition = "2021"
+description = "Phone-Cam PC app: receives the phone camera over USB or Wi-Fi and exposes it as a virtual webcam"
+license = "MIT"
+
+[dependencies]
+# Link encryption: ECDH P-256 key agreement, ECDSA identity, AES-256-GCM records.
+p256 = { version = "0.13", default-features = false, features = ["ecdh", "ecdsa", "std"] }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+hkdf = "0.12"
+sha2 = "0.10"
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

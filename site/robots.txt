@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://emre1001.github.io/Phone-Cam/sitemap.xml
