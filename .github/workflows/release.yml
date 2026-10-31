@@ -2,6 +2,12 @@ name: release
 on:
   push:
     tags: ['v*']
+  # Rebuild an existing release from the current branch (replaces its files).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to upload to, e.g. v0.0.1
+        required: true
 permissions:
   contents: write
 jobs:
@@ -22,6 +28,7 @@ jobs:
         run: cp pc/target/release/${{ matrix.bin }} ${{ matrix.out }}
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: ${{ matrix.out }}
   android:
     runs-on: ubuntu-latest
@@ -46,4 +53,5 @@ jobs:
       - run: cp android/app/build/outputs/apk/release/app-release.apk phone-cam-android.apk
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: phone-cam-android.apk
