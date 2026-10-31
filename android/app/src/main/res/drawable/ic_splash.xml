@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Phone-Cam mark (docs/logo.svg): lens + tally light, drawn on the 64-unit logo grid. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:strokeColor="#F08A3C" android:strokeWidth="5" android:fillColor="#00000000"
-        android:pathData="M42,30h24a6,6 0 0 1 6,6v36a6,6 0 0 1 -6,6h-24a6,6 0 0 1 -6,-6v-36a6,6 0 0 1 6,-6z" />
-    <path android:fillColor="#F08A3C" android:pathData="M54,42m-9,0a9,9 0 1,1 18,0a9,9 0 1,1 -18,0" />
-    <path android:fillColor="#F08A3C" android:pathData="M49,69h10v3h-10z" />
+    <group android:translateX="21" android:translateY="21" android:scaleX="1.03125" android:scaleY="1.03125">
+        <path android:strokeColor="#F08A3C" android:strokeWidth="5" android:fillColor="#00000000"
+            android:pathData="M15,35a15,15 0 1,0 30,0a15,15 0 1,0 -30,0" />
+        <path android:fillColor="#F08A3C" android:pathData="M24.5,35a5.5,5.5 0 1,0 11,0a5.5,5.5 0 1,0 -11,0" />
+        <path android:fillColor="#F08A3C" android:pathData="M44.5,15a4.5,4.5 0 1,0 9,0a4.5,4.5 0 1,0 -9,0" />
+    </group>
 </vector>

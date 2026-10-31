@@ -1,3 +1,5 @@
+<img src="docs/logo.svg" width="72" alt="Phone-Cam Logo">
+
 # Phone-Cam
 
 Handy als echte Webcam für den PC. Eine App am Handy, eine am PC. Verbindung über **USB-Kabel**, **WLAN** oder **beides gleichzeitig** für maximale Bandbreite. Jede Verbindung ist **verschlüsselt** (ECDH P-256, AES-256-GCM). Bis **4K bei 60 fps**, wenn Kamera und Hardware-Encoder des Handys es können.
