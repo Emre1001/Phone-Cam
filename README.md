@@ -1,57 +1,178 @@
-<img src="docs/logo.svg" width="72" alt="Phone-Cam Logo">
+<div align="center">
+
+<img src="docs/logo.svg" width="96" alt="Phone-Cam Logo">
 
 # Phone-Cam
 
-Handy als echte Webcam für den PC. Eine App am Handy, eine am PC. Verbindung über **USB-Kabel**, **WLAN** oder **beides gleichzeitig** für maximale Bandbreite. Jede Verbindung ist **verschlüsselt** (ECDH P-256, AES-256-GCM). Bis **4K bei 60 fps**, wenn Kamera und Hardware-Encoder des Handys es können.
+**Dein Handy als echte Webcam am PC.**<br>
+Per USB-Kabel, WLAN oder beidem gleichzeitig. Verschlüsselt. Bis 4K mit 60 fps.
 
-- **PC-App**: eine einzige Datei (Rust, ~700 KB, nur RustCrypto-Krates). Kein Electron. Die Oberfläche läuft in einem Chrome-/Edge-App-Fenster, das schon installiert ist.
-- **Handy-App**: native Android-App (Kotlin, Camera2 + MediaCodec), APK unter 200 KB.
-- **Virtuelle Kamera**: auf Linux als `Phone-Cam` (v4l2loopback), in jeder Video-App wählbar.
+[![Release](https://img.shields.io/github/v/release/Emre1001/Phone-Cam?label=Release&color=F08A3C)](https://github.com/Emre1001/Phone-Cam/releases/latest)
+[![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-1A1007)](LICENSE)
+![Linux](https://img.shields.io/badge/PC-Linux%20%C2%B7%20Windows-555)
+![Android](https://img.shields.io/badge/Handy-Android%208%2B-555)
 
-## Status
+[Download](https://github.com/Emre1001/Phone-Cam/releases/latest) · [Website](https://emre1001.github.io/Phone-Cam/) · [Protokoll](docs/PROTOCOL.md)
+
+</div>
+
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="site/img/pc-dark-1600.webp">
+  <img src="site/img/pc-light-1600.webp" alt="Die PC-App: links die Vorschau, rechts USB, WLAN mit Schlüssel und PIN, virtuelle Kamera">
+</picture>
+
+## Was Phone-Cam macht
+
+Eine App am Handy filmt, eine App am PC empfängt. Der PC stellt das Bild als Kamera **„Phone-Cam“** bereit, die du in Zoom, OBS, Meet, Discord oder jeder anderen Video-App auswählst.
+
+| | |
+|---|---|
+| **USB, WLAN oder beides** | Über USB braucht es weder WLAN noch PIN. Mit *USB + WLAN* laufen beide Wege gleichzeitig: mehr Bandbreite, und fällt einer aus, läuft der andere weiter. |
+| **Bis 4K bei 60 fps** | Die Handy-App fragt Kamera und Hardware-Encoder und nimmt den besten Modus, den beide schaffen. HEVC, wenn möglich, sonst H.264. |
+| **Verschlüsselt** | Jede Verbindung: ECDH P-256 und AES-256-GCM. Der PC weist sich mit einem eigenen Schlüssel aus, das Handy merkt ihn sich. |
+| **Klein** | PC-App: eine Datei, rund 700 KB, kein Electron. Handy-App: unter 200 KB. |
+| **Ruhig** | Hell, Dunkel oder wie das System. Deutsch, English, Türkçe. Updates kommen aus den GitHub Releases. |
+
+## Download
+
+| Datei | Für | Braucht |
+|---|---|---|
+| [`phone-cam-pc-linux-x86_64`](https://github.com/Emre1001/Phone-Cam/releases/latest/download/phone-cam-pc-linux-x86_64) | PC, Linux | `ffmpeg`, für USB `adb` |
+| [`phone-cam-pc-windows-x86_64.exe`](https://github.com/Emre1001/Phone-Cam/releases/latest/download/phone-cam-pc-windows-x86_64.exe) | PC, Windows | `ffmpeg`, für USB `adb` |
+| [`phone-cam-android.apk`](https://github.com/Emre1001/Phone-Cam/releases/latest/download/phone-cam-android.apk) | Handy | Android 8 oder neuer |
+
+Die PC-App öffnet ihre Oberfläche in einem Chrome-, Edge- oder Chromium-Fenster, das schon installiert ist. Ohne einen dieser Browser öffnet sie sich im Standardbrowser.
+
+## Schnellstart
+
+**1. PC vorbereiten** (Linux, Debian/Ubuntu):
+
+```bash
+sudo apt install ffmpeg adb
+```
+
+```bash
+chmod +x phone-cam-pc-linux-x86_64 && ./phone-cam-pc-linux-x86_64
+```
+
+In der PC-App unter *Virtuelle Kamera* einmal **Einrichten** klicken. Das lädt den Treiber `v4l2loopback` und fragt nach deinem Passwort.
+
+**2. Handy verbinden**: Handy-App installieren und öffnen, dann eine Verbindung wählen:
+
+| Verbindung | So geht es |
+|---|---|
+| **USB** | USB-Debugging einschalten (*Einstellungen*, *Über das Telefon*, 7 mal auf *Build-Nummer*, dann *Entwickleroptionen*). Kabel stecken, die Anfrage am Handy bestätigen. Die PC-App richtet alles selbst ein und kann die Handy-App per Knopf starten. |
+| **WLAN** | Handy und PC im selben Netz. Die App findet den PC selbst. PIN aus der PC-App eingeben. Beim ersten Mal zeigt das Handy einen Schlüssel: Er muss mit dem *Schlüssel* in der PC-App übereinstimmen. |
+| **USB + WLAN** | Kabel stecken und WLAN an. Das Handy startet über USB und nimmt WLAN als zweiten Weg dazu. |
+
+**3. Starten**: Handy so halten, wie du es nutzt, dann **Starten**. In deiner Video-App die Kamera **Phone-Cam** wählen.
+
+<p align="center">
+  <img src="site/img/phone-dark.webp" width="260" alt="Die Handy-App im dunklen Design, live über USB">
+</p>
+
+## Stand
 
 | | Linux | Windows |
 |---|---|---|
-| Stream, Vorschau, USB, WLAN, USB+WLAN, Verschlüsselung, PIN | getestet | gebaut in CI, nicht getestet |
-| Virtuelle Kamera | ja (v4l2loopback) | **nicht enthalten**: ein DirectShow-/Media-Foundation-Treiber fehlt noch |
+| Stream, Vorschau, USB, WLAN, USB + WLAN, Verschlüsselung | ja | gebaut, nicht getestet |
+| Virtuelle Kamera | ja, `v4l2loopback` | **fehlt noch** (Treiber nicht enthalten) |
 
-Getestet: PC-Kern mit simuliertem 4K@60-Sender und verschlüsseltem USB+LAN-Bonding (1080p60, 0 Drops), Android-Emulator mit USB+WLAN gleichzeitig inkl. WLAN-Ausfall und Wiederverbinden, Schlüssel-Abfrage bei unbekanntem PC, PC-Oberfläche ohne Layoutfehler in 320 bis 1920 px, Hell/Dunkel, Deutsch/Türkisch. **Nicht getestet**: echtes Handy, 4K60 auf echter Hardware, echtes WLAN, echte Video-App am v4l2loopback-Gerät.
+**Getestet** mit einem simulierten Sender (4K60 und 1080p60 über USB und LAN gleichzeitig, 0 verlorene Bilder) und im Android-Emulator (USB + WLAN, WLAN-Ausfall mitten im Stream, Schlüsselabfrage).
+**Nicht getestet**: ein echtes Handy, 4K60 auf echter Hardware, eine echte Video-App am virtuellen Kameragerät.
 
-## Benutzen
+## Wenn etwas nicht klappt
 
-**PC** (Linux): `ffmpeg` installieren, `phone-cam` starten. Unter „Virtuelle Kamera“ einmal *Einrichten* klicken (lädt `v4l2loopback`, fragt per polkit nach dem Passwort). Von Hand:
+<details>
+<summary><b>Die PC-App zeigt „ffmpeg fehlt“</b></summary>
+
+`ffmpeg` installieren (`sudo apt install ffmpeg`) und die PC-App neu starten. Unter Windows `ffmpeg.exe` in den `PATH` legen oder neben die `.exe`.
+</details>
+
+<details>
+<summary><b>Das Handy erscheint nicht unter USB</b></summary>
+
+`adb` installieren, USB-Debugging einschalten und die Abfrage *USB-Debugging zulassen?* am Handy bestätigen. Steht dort „Offline“, Kabel neu stecken. Manche Kabel laden nur und übertragen keine Daten.
+</details>
+
+<details>
+<summary><b>„Phone-Cam“ fehlt in der Video-App</b></summary>
+
+In der PC-App *Einrichten* klicken, dann die Video-App neu starten. Von Hand:
 
 ```bash
 sudo modprobe v4l2loopback exclusive_caps=1 card_label=Phone-Cam video_nr=42
 ```
+</details>
 
-**USB**: USB-Debugging am Handy an, Kabel stecken, `adb` (Android platform-tools) auf dem PC. Die PC-App richtet `adb reverse tcp:47800 tcp:47800` selbst ein und kann die Handy-App per Knopf starten. Kein WLAN nötig, keine PIN.
+<details>
+<summary><b>Das Bild steht auf dem Kopf oder ist gespiegelt</b></summary>
 
-**WLAN**: Handy-App auf *WLAN*, PC wird per Broadcast gefunden (oder Adresse eintragen), PIN aus der PC-App eingeben. Beim ersten Verbinden zeigt das Handy den Schlüssel des PCs: Er muss mit dem *Schlüssel* in der PC-App übereinstimmen. Über USB wird der Schlüssel automatisch gemerkt.
+Die Drehung wird beim Start gelesen. In der PC-App unter *Einstellungen* lassen sich Drehung und Spiegeln korrigieren, das gilt ab der nächsten Verbindung.
+</details>
 
-**USB + WLAN**: Kabel und WLAN gleichzeitig. Das Handy verteilt die Bilder auf beide Wege (der weniger volle bekommt das nächste Bild), der PC setzt sie in der richtigen Reihenfolge zusammen. Fällt ein Weg aus, läuft der Stream über den anderen weiter, der ausgefallene verbindet sich von selbst neu.
+<details>
+<summary><b>„Zu viele falsche PINs“</b></summary>
 
-Handy so halten, wie du es nutzt, dann *Starten*. Die Drehung wird beim Start gelesen. Feinkorrektur und Spiegeln in den PC-Einstellungen.
+Nach 5 falschen PINs sperrt der PC WLAN-Verbindungen für 30 Sekunden. Danach die PIN aus der PC-App erneut eingeben.
+</details>
 
-## Bauen
+## Sicherheit
 
-```bash
-cd pc && cargo build --release          # Tests: cargo test --release
-cd android && ./gradlew assembleRelease # braucht Android SDK 36, JDK 17
+- Jede Verbindung handelt eigene Schlüssel aus (ECDH P-256, HKDF-SHA256). Das Bild läuft mit AES-256-GCM. Veränderte oder wiederholte Pakete werden verworfen.
+- Der PC signiert den Verbindungsaufbau mit einem festen Schlüssel. Das Handy merkt sich diesen Schlüssel: über USB automatisch, über WLAN erst, wenn du den Fingerabdruck in beiden Apps verglichen hast.
+- Die PIN schützt den PC vor fremden Handys im Netz. Nach 5 Fehlversuchen ist 30 Sekunden Pause.
+- **Grenze**: Wer beim ersten WLAN-Verbinden den Fingerabdruck nicht vergleicht, ist gegen einen aktiven Angreifer im selben Netz nicht geschützt. Die erste Kopplung über USB ist sicher. Programme auf dem PC selbst brauchen keine PIN.
+
+Details: [docs/PROTOCOL.md](docs/PROTOCOL.md).
+
+## So funktioniert es
+
+```mermaid
+flowchart LR
+  subgraph Handy
+    K[Kamera] --> E[Hardware-Encoder<br>H.264 / HEVC] --> B[Verteilung<br>auf Verbindungen]
+  end
+  B -- USB, adb reverse --> M
+  B -- WLAN --> M
+  subgraph PC
+    M[Reihenfolge<br>wiederherstellen] --> F[ffmpeg] --> V[Virtuelle Kamera<br>v4l2loopback]
+    F --> P[Vorschau in der PC-App]
+  end
 ```
 
-Release: Tag `vX.Y.Z` pushen, `.github/workflows/release.yml` hängt `phone-cam-pc-linux-x86_64`, `phone-cam-pc-windows-x86_64.exe` und `phone-cam-android.apk` an. Beide Apps prüfen GitHub Releases und bieten Updates an. APKs müssen immer mit demselben Schlüssel signiert sein (Secrets `PHONECAM_KEYSTORE_B64`, `PHONECAM_KEYSTORE_PASSWORD`, `PHONECAM_KEY_ALIAS`, `PHONECAM_KEY_PASSWORD`).
+Jedes Bild bekommt eine laufende Nummer. Das Handy schickt es über die Verbindung, in der gerade am wenigsten wartet. Der PC sortiert die Bilder wieder. Fehlt eines länger als 150 ms, macht er beim nächsten Schlüsselbild weiter und fordert eines an.
 
-## Aufbau
+## Selbst bauen
 
-`pc/src`: `cam.rs` (Sessions, Links, ffmpeg-Pipeline), `crypto.rs` (Handshake, AES-GCM), `merge.rs` (Reihenfolge über mehrere Links), `watch.rs` (adb, v4l2loopback, IPs), `http.rs` (Oberfläche auf `127.0.0.1:47810`), `discovery.rs`, `update.rs`. Protokoll: [docs/PROTOCOL.md](docs/PROTOCOL.md). `android/app/src/main/java/com/phonecam`: `StreamService.kt` (Kamera, Encoder, Session), `Bond.kt` (Verteilung auf Links), `Crypto.kt`, `Link.kt`, `Caps.kt` (bester Modus), `MainActivity.kt`.
+```bash
+cd pc && cargo build --release        # Tests: cargo test --release
+```
+
+```bash
+cd android && ./gradlew assembleRelease   # Android SDK 36, JDK 17
+```
+
+| Ordner | Inhalt |
+|---|---|
+| `pc/src` | `cam.rs` Sitzungen und ffmpeg, `crypto.rs` Verschlüsselung, `merge.rs` Reihenfolge, `watch.rs` adb und virtuelle Kamera, `http.rs` Oberfläche, `update.rs` Updates |
+| `pc/ui` | Oberfläche der PC-App (HTML, CSS, JS, in die Datei eingebettet) |
+| `android/.../phonecam` | `StreamService.kt` Kamera und Encoder, `Bond.kt` Verteilung, `Crypto.kt`, `Link.kt`, `Caps.kt` bester Videomodus |
+| `site` | Website (GitHub Pages) |
+| `docs` | Protokoll, Logo |
+
+**Release**: einen Tag `vX.Y.Z` pushen. Der Workflow baut Linux, Windows und die APK und hängt sie an das Release. Ein bestehendes Release neu bauen: *Actions*, *release*, *Run workflow*, Tag angeben. APKs müssen immer mit demselben Schlüssel signiert sein, sonst lassen sich Updates nicht installieren (Secrets `PHONECAM_KEYSTORE_B64`, `PHONECAM_KEYSTORE_PASSWORD`, `PHONECAM_KEY_ALIAS`, `PHONECAM_KEY_PASSWORD`).
 
 ## Grenzen
 
 - Kein Ton.
-- Verschlüsselung: Wer beim ersten WLAN-Verbinden den Schlüssel nicht vergleicht, ist gegen einen aktiven Angreifer im selben Netz nicht geschützt. Erste Kopplung per USB ist sicher. Lokale Programme auf dem PC (Loopback) brauchen keine PIN.
-- USB+WLAN: Weil WLAN langsamer antwortet, kann die Verzögerung etwas steigen.
 - Ein Handy gleichzeitig.
-- Eingebauter Softwarefall: ohne Hardware-Encoder nur bis 1080p.
+- Ohne Hardware-Encoder höchstens 1080p.
+- USB + WLAN kann die Verzögerung etwas erhöhen, weil WLAN langsamer antwortet.
+- Kein iPhone.
 
-MIT-Lizenz.
+## Lizenz
+
+[MIT](LICENSE)
