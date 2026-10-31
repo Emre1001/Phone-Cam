@@ -29,8 +29,8 @@ Eine App am Handy filmt, eine App am PC empfängt. Der PC stellt das Bild als Ka
 
 - **USB, WLAN oder beides**: Über USB braucht es weder WLAN noch PIN. Mit *USB + WLAN* laufen beide Wege gleichzeitig: mehr Bandbreite, und fällt einer aus, läuft der andere weiter.
 - **Bis 4K bei 60 fps**: Die Handy-App fragt Kamera und Hardware-Encoder und nimmt den besten Modus, den beide schaffen. HEVC, wenn möglich, sonst H.264.
-- **Verschlüsselt**: Jede Verbindung: ECDH P-256 und AES-256-GCM. Der PC weist sich mit einem eigenen Schlüssel aus, das Handy merkt ihn sich.
-- **Klein**: PC-App: eine Datei, rund 700 KB, kein Electron. Handy-App: unter 200 KB.
+- **Verschlüsselt**: Jede Verbindung nutzt ECDH P-256 und AES-256-GCM. Der PC weist sich mit einem eigenen Schlüssel aus, das Handy merkt ihn sich.
+- **Klein**: Die PC-App ist eine einzige Datei mit rund 700 KB, ohne Electron. Die Handy-App hat unter 200 KB.
 - **Ruhig**: Hell, Dunkel oder wie das System. Deutsch, English, Türkçe. Updates kommen aus den GitHub Releases.
 
 ## Download
