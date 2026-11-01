@@ -76,7 +76,7 @@ In der PC-App unter *Virtuelle Kamera* einmal **Einrichten** klicken. Das lädt 
 
 | Verbindung | So geht es |
 |---|---|
-| **USB** | USB-Debugging einschalten (*Einstellungen*, *Über das Telefon*, 7 mal auf *Build-Nummer*, dann *Entwickleroptionen*). Kabel stecken, die Anfrage am Handy bestätigen. Die PC-App richtet alles selbst ein und kann die Handy-App per Knopf starten. |
+| **USB** | USB-Debugging einschalten: Entwickleroptionen freischalten (Samsung: *Einstellungen*, *Telefoninfo*, *Softwareinformationen*, 7 mal auf *Buildnummer*; Xiaomi/HyperOS: *Einstellungen*, *Über das Telefon*, 7 mal auf *OS-Version*), dann in den *Entwickleroptionen* (Xiaomi: unter *Zusätzliche Einstellungen*) *USB-Debugging* an. Kabel stecken, die Anfrage am Handy bestätigen. Die PC-App richtet alles selbst ein und kann die Handy-App per Knopf starten. |
 | **WLAN** | Handy und PC im selben Netz. Die App findet den PC selbst. PIN aus der PC-App eingeben. Beim ersten Mal zeigt das Handy einen Schlüssel: Er muss mit dem *Schlüssel* in der PC-App übereinstimmen. |
 | **USB + WLAN** | Kabel stecken und WLAN an. Das Handy startet über USB und nimmt WLAN als zweiten Weg dazu. |
 
