@@ -88,4 +88,15 @@
     <string name="trust_title">Diesem PC vertrauen? Schlüssel %1$s. Er muss mit dem Schlüssel in der PC-App übereinstimmen.</string>
     <string name="trust_ok">Stimmt überein, vertrauen</string>
     <string name="live_links">%1$s · verschlüsselt · PC %2$s</string>
+    <string name="hot">Das Handy ist warm: Bitrate gesenkt, damit es nicht drosselt.</string>
+    <string name="dim">Bildschirm abdunkeln</string>
+    <string name="dim_hint">Stream läuft · Tippen zum Aufwecken</string>
+    <string name="battery_title">Weiterstreamen bei ausgeschaltetem Bildschirm</string>
+    <string name="battery_text">Android kann den Stream beenden, wenn der Bildschirm ausgeht. Nimm Phone-Cam von der Akku-Optimierung aus (Samsung: „Nicht eingeschränkt“).</string>
+    <string name="battery_text_xiaomi">HyperOS beendet Apps im Hintergrund. Nimm Phone-Cam von der Akku-Optimierung aus („Keine Einschränkungen“) und erlaube Autostart.</string>
+    <string name="battery_allow">Von Akku-Optimierung ausnehmen</string>
+    <string name="battery_autostart">Autostart erlauben</string>
+    <string name="stabilize">Bildstabilisierung</string>
+    <string name="stabilize_hint">Für Aufnahmen aus der Hand. Schneidet das Bild etwas zu und erhöht die Verzögerung; die optische Stabilisierung bleibt ohnehin an.</string>
+    <string name="this_phone">Dieses Handy: %1$s</string>
 </resources>

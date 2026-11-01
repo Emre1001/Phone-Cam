@@ -88,4 +88,15 @@
     <string name="trust_title">Trust this PC? Key %1$s. It must match the key shown in the PC app.</string>
     <string name="trust_ok">Keys match, trust</string>
     <string name="live_links">%1$s · encrypted · PC %2$s</string>
+    <string name="hot">The phone is warm: bitrate lowered so it does not throttle.</string>
+    <string name="dim">Dim screen</string>
+    <string name="dim_hint">Streaming · tap to wake</string>
+    <string name="battery_title">Keep streaming with the screen off</string>
+    <string name="battery_text">Android may stop the stream when the screen turns off. Exempt Phone-Cam from battery optimisation (Samsung: “Unrestricted”).</string>
+    <string name="battery_text_xiaomi">HyperOS stops apps in the background. Exempt Phone-Cam from battery optimisation (“No restrictions”) and allow Autostart.</string>
+    <string name="battery_allow">Exempt from battery optimisation</string>
+    <string name="battery_autostart">Allow Autostart</string>
+    <string name="stabilize">Image stabilisation</string>
+    <string name="stabilize_hint">For handheld use. Crops the picture slightly and adds delay; optical stabilisation stays on anyway.</string>
+    <string name="this_phone">This phone: %1$s</string>
 </resources>

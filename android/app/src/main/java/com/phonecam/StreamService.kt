@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
@@ -18,9 +19,7 @@ import android.hardware.display.DisplayManager
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
-import android.net.ConnectivityManager
 import android.net.Network
-import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
@@ -63,6 +62,7 @@ class StreamService : Service() {
         running = true
         startInForeground(getString(R.string.notif_waiting))
         acquireLocks()
+        watchThermal()
         orientationListener = object : OrientationEventListener(this) {
             override fun onOrientationChanged(deg: Int) {
                 if (deg == ORIENTATION_UNKNOWN) return
@@ -77,6 +77,9 @@ class StreamService : Service() {
         running = false
         orientationListener?.disable()
         releaseLocks()
+        if (Build.VERSION.SDK_INT >= 29) {
+            (thermalListener as? PowerManager.OnThermalStatusChangedListener)?.let { getSystemService(PowerManager::class.java)?.removeThermalStatusListener(it) }
+        }
         if (Status.current.error == Err.NONE) Status.publish(Snap())
         super.onDestroy()
     }
@@ -89,13 +92,9 @@ class StreamService : Service() {
     }
 
     /* ---------- Main loop: connect, stream, reconnect ---------- */
-    private fun wifiNetwork(): Network? {
-        val cm = getSystemService(ConnectivityManager::class.java)
-        @Suppress("DEPRECATION")
-        return cm.allNetworks.firstOrNull { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
-    }
+    private fun wifiNetwork(): Network? = findWifiNetwork(this)
 
-    private fun wifiHost(prefs: Prefs): String = prefs.host.ifBlank { Discovery.find().firstOrNull()?.host.orEmpty() }
+    private fun wifiHost(prefs: Prefs): String = prefs.host.ifBlank { Discovery.find(network = wifiNetwork()).firstOrNull()?.host.orEmpty() }
 
     private fun loop() {
         val prefs = Prefs(this)
@@ -110,11 +109,11 @@ class StreamService : Service() {
                 Status.publish(Snap(Snap.State.SEARCHING, mode = mode))
                 val both = prefs.mode == "both"
                 // USB first when it may be used: it needs no PIN and pins the PC key safely.
-                val r = if (prefs.mode == "wifi") null else Session.start("127.0.0.1", null, prefs, prefs.pin, Build.MODEL, mode, rotationFor(mode))
+                val r = if (prefs.mode == "wifi") null else Session.start("127.0.0.1", null, prefs, prefs.pin, Device.name(this), mode, rotationFor(mode))
                 val result = if (r is Session.Result.Ok || prefs.mode == "usb") r else {
                     val host = wifiHost(prefs)
                     if (host.isEmpty()) null
-                    else { Status.publish(Snap(Snap.State.CONNECTING, mode = mode)); Session.start(host, wifiNetwork(), prefs, prefs.pin, Build.MODEL, mode, rotationFor(mode)) }
+                    else { Status.publish(Snap(Snap.State.CONNECTING, mode = mode)); Session.start(host, wifiNetwork(), prefs, prefs.pin, Device.name(this), mode, rotationFor(mode)) }
                 }
                 when (result) {
                     null, is Session.Result.Failed -> { Status.publish(Snap(Snap.State.WAITING, mode = mode)); sleep(1200) }
@@ -229,10 +228,26 @@ class StreamService : Service() {
             if (!configured.await(5, TimeUnit.SECONDS) || session == null) throw NoPictureException(m)
 
             Log.i(TAG, "session configured")
+            val ch = cm.getCameraCharacteristics(m.cameraId)
+            val stabilize = Prefs(this).stabilize
             val req = camera!!.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
                 addTarget(surface)
                 set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, m.fpsRange)
-                set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+                if (ch.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)?.contains(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO) == true) {
+                    set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+                }
+                // Electronic stabilisation crops the picture and holds frames back (Samsung and Xiaomi turn it on
+                // in TEMPLATE_RECORD). A webcam usually stands still, so it is off unless the user wants it.
+                set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE,
+                    if (stabilize) CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON else CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
+                // Optical stabilisation costs no delay: on where the lens has it.
+                if (ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)?.contains(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON) == true) {
+                    set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
+                }
+                // No flicker under 50 Hz / 60 Hz room lights.
+                if (ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_ANTIBANDING_MODES)?.contains(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO) == true) {
+                    set(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE, CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO)
+                }
             }.build()
             session!!.setRepeatingRequest(req, null, camHandler)
             drain(codec, bond, m, cameraError)
@@ -247,27 +262,42 @@ class StreamService : Service() {
         }
     }
 
-    /** Configures an encoder; encoders differ in what they accept, so optional keys are dropped step by step. */
+    /**
+     * Configures the encoder picked in [Caps] by name, tuned for its chip ([Device.tuning]). Encoders differ in
+     * what they accept, so optional keys are dropped step by step: level 0 has everything, level 2 the bare minimum.
+     */
     private fun createEncoder(m: Mode): MediaCodec {
+        val tune = Device.tuning(m.encoder)
         var last: Exception? = null
         for (level in 0..2) {
             val format = MediaFormat.createVideoFormat(m.mime, m.width, m.height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, m.kbps * 1000)
                 setInteger(MediaFormat.KEY_FRAME_RATE, m.fps)
-                // Key frames are big; the PC asks for one when it lost a frame, so a regular one every 2 s is enough.
-                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
-                if (level < 2) setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, tune.keyFrameSec)
+                if (level < 2) {
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
+                    // B-frames reorder pictures: the PC decodes with low delay and would show them out of order.
+                    // Some Snapdragon and Exynos HEVC encoders turn them on by default.
+                    if (Build.VERSION.SDK_INT >= 29) setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+                }
                 if (level < 1) {
                     setInteger("prepend-sps-pps-to-idr-frames", 1)
                     setInteger(MediaFormat.KEY_PRIORITY, 0)
+                    // Clock the encoder for the full frame rate right away (avoids dropped frames at 60 fps).
+                    setInteger(MediaFormat.KEY_OPERATING_RATE, m.fps)
                     if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LATENCY, 1)
+                    // Video-standard colours, so video apps on the PC show the same colours as the phone.
+                    setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+                    setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
+                    setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+                    tune.vendorKeys.forEach { (k, v) -> setInteger(k, v) }
                 }
             }
-            val codec = MediaCodec.createEncoderByType(m.mime)
+            val codec = try { MediaCodec.createByCodecName(m.encoder) } catch (_: Exception) { MediaCodec.createEncoderByType(m.mime) }
             try {
                 codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-                Log.i(TAG, "encoder ${codec.name} configured at level $level")
+                Log.i(TAG, "encoder ${codec.name} configured at level $level (chip ${Device.chip})")
                 return codec
             } catch (e: Exception) {
                 last = e
@@ -329,7 +359,7 @@ class StreamService : Service() {
         // At most ~300 ms of video may wait in a link queue; the preferred link (USB) takes frames below ~2 frames.
         val maxQueued = maxOf(512 * 1024L, m.kbps * 1000L / 8 * 3 / 10)
         val lowWater = maxOf(96 * 1024L, m.kbps * 1000L / 8 / m.fps * 2)
-        val target = m.kbps
+        var target = thermalCap(m.kbps)
         var kbps = target
         var lastCut = 0L
         var lastChange = started
@@ -372,6 +402,12 @@ class StreamService : Service() {
             // Watchdogs: a mode that never delivers, or a camera that stops.
             if (pictures == 0L && now - started > FIRST_PICTURE_MS) throw NoPictureException(m)
             if (pictures > 0 && now - lastPicture > STALL_MS) throw IOException("camera stalled")
+            // Heat changes the target; a lower one applies at once.
+            val capped = thermalCap(m.kbps)
+            if (capped != target) {
+                target = capped
+                if (kbps > target) { kbps = target; setBitrate(codec, kbps); lastChange = now }
+            }
             // Calm for a while: climb back towards the target bitrate.
             if (kbps < target && now - lastCut > 4000 && now - lastChange > 2000) {
                 kbps = minOf(target, kbps * 115 / 100 + 250)
@@ -383,7 +419,7 @@ class StreamService : Service() {
                 val links = bond.rates(now - mark)
                 val sent = links.sumOf { it.second }
                 val state = if (pictures > 0) Snap.State.LIVE else Snap.State.CONNECTING
-                Status.publish(Snap(state, mode = m, fps = fps, kbps = sent, links = links, pcKey = bond.pcKey()))
+                Status.publish(Snap(state, mode = m, fps = fps, kbps = sent, links = links, pcKey = bond.pcKey(), hot = target < m.kbps))
                 if (pictures > 0 && kotlin.math.abs(fps - lastNotify) > 1) {
                     notify(getString(R.string.notif_live, fps, "%.1f".format(sent / 1000.0))); lastNotify = fps
                 }
@@ -418,6 +454,26 @@ class StreamService : Service() {
     }
 
     private fun notify(text: String) = getSystemService(NotificationManager::class.java).notify(1, notification(text))
+
+    /* ---------- Heat: long 4K or 60 fps streams warm the phone; lower the bitrate before Android throttles ---------- */
+    @Volatile private var thermal = 0
+    private var thermalListener: Any? = null
+
+    private fun watchThermal() {
+        if (Build.VERSION.SDK_INT < 29) return
+        val pm = getSystemService(PowerManager::class.java) ?: return
+        val l = PowerManager.OnThermalStatusChangedListener { thermal = it }
+        thermal = pm.currentThermalStatus
+        pm.addThermalStatusListener(mainExecutor, l)
+        thermalListener = l
+    }
+
+    /** Bitrate the phone can keep up without overheating: full, 75 % when warm, 50 % when hot. */
+    private fun thermalCap(kbps: Int): Int = when {
+        thermal >= PowerManager.THERMAL_STATUS_SEVERE -> kbps / 2
+        thermal >= PowerManager.THERMAL_STATUS_MODERATE -> kbps * 3 / 4
+        else -> kbps
+    }
 
     @SuppressLint("WakelockTimeout")
     private fun acquireLocks() {

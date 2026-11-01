@@ -24,6 +24,8 @@ const LINK_TIMEOUT: Duration = Duration::from_secs(10);
 const FEED_FRAMES: usize = 24;
 /// Key frames are expensive: ask for one at most this often.
 const KEY_REQUEST_GAP: Duration = Duration::from_millis(400);
+/// A session that received nothing for this long gives way to a new phone.
+const TAKEOVER_IDLE: Duration = Duration::from_secs(2);
 
 /// One encrypted link of a session.
 struct Link {
@@ -54,6 +56,12 @@ struct Sess {
     pictures: AtomicU64,
     closed: AtomicBool,
     last_key_request: Mutex<Option<Instant>>,
+    /// Phone name from the hello, to recognise the same phone coming back.
+    phone: String,
+    /// When the last record arrived on any link.
+    last_rx: Mutex<Instant>,
+    /// ffmpeg has stopped and the session is cleaned up.
+    done: AtomicBool,
 }
 
 impl Sess {
@@ -68,6 +76,15 @@ impl Sess {
     }
     fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Relaxed)
+    }
+    fn idle(&self) -> Duration {
+        self.last_rx.lock().unwrap_or_else(|e| e.into_inner()).elapsed()
+    }
+    /// Ends the session: links close, the pipeline notices within a moment and cleans up.
+    fn close(&self) {
+        self.closed.store(true, Ordering::Relaxed);
+        let links: Vec<Arc<Link>> = self.links().clone();
+        links.iter().for_each(|l| l.close());
     }
 
     /// Asks the phone for a key frame, over `via` if given. Rate limited: every key frame costs bandwidth,
@@ -103,10 +120,14 @@ fn current() -> MutexGuard<'static, Option<Arc<Sess>>> {
 pub fn disconnect() {
     let sess = current().clone();
     if let Some(s) = sess {
-        s.closed.store(true, Ordering::Relaxed);
-        let links: Vec<Arc<Link>> = s.links().clone();
-        links.iter().for_each(|l| l.close());
+        s.close();
     }
+}
+
+/// A new session may replace the running one when it is the same phone coming back (app restarted, Wi-Fi
+/// dropped and the PC has not noticed yet) or when the running one has gone quiet. Else the PC is busy.
+fn may_take_over(old: &Sess, phone: &str) -> bool {
+    old.phone == phone || old.idle() > TAKEOVER_IDLE
 }
 
 pub fn listen(sh: Arc<Shared>, id: Arc<Identity>) {
@@ -257,13 +278,26 @@ fn new_session(sh: &Arc<Shared>, mut s: TcpStream, open: Opener, mut seal: Seale
         pictures: AtomicU64::new(0),
         closed: AtomicBool::new(false),
         last_key_request: Mutex::new(None),
+        phone: h.name.chars().take(40).collect(),
+        last_rx: Mutex::new(Instant::now()),
+        done: AtomicBool::new(false),
     });
-    {
+    let replaced = {
         let mut cur = current();
-        if cur.as_ref().is_some_and(|x| !x.is_closed()) {
-            return seal.write(&mut s, &[2]);
+        let old = cur.clone();
+        match old {
+            Some(old) if !old.is_closed() && !may_take_over(&old, &sess.phone) => return seal.write(&mut s, &[2]),
+            _ => {}
         }
-        *cur = Some(sess.clone());
+        cur.replace(sess.clone())
+    };
+    if let Some(old) = replaced {
+        // Let the old ffmpeg release the virtual camera before the new one opens it.
+        old.close();
+        let t = Instant::now();
+        while !old.done.load(Ordering::Relaxed) && t.elapsed() < Duration::from_secs(3) {
+            thread::sleep(Duration::from_millis(20));
+        }
     }
     sh.update(|st| {
         st.session = Some(Session {
@@ -318,6 +352,7 @@ fn run_link(sh: &Arc<Shared>, sess: &Arc<Sess>, s: TcpStream, mut open: Opener, 
         loop {
             let rec = open.read(&mut reader)?;
             link.bytes.fetch_add(rec.len() as u64 + 20, Ordering::Relaxed);
+            *sess.last_rx.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
             if sess.is_closed() {
                 return Ok(());
             }
@@ -481,7 +516,7 @@ fn run_pipeline(sh: &Arc<Shared>, sess: &Arc<Sess>, ffmpeg: &str, pipe: Pipe, mu
         let (ow, oh) = pipe.out_size(vdev.is_some());
         let vcam = vdev.is_some();
         sh.update(|st| {
-            if let Some(x) = st.session.as_mut() {
+            if let Some(x) = st.session.as_mut().filter(|_| !sess.is_closed()) {
                 x.out_w = ow;
                 x.out_h = oh;
                 x.vcam = vcam;
@@ -551,6 +586,10 @@ fn run_pipeline(sh: &Arc<Shared>, sess: &Arc<Sess>, ffmpeg: &str, pipe: Pipe, mu
                 if let Some(e) = fallback_from.take() {
                     sh.update(|st| st.vcam_stream_error = e);
                 }
+            }
+            // A replaced session must not write its numbers into the new one.
+            if sess.is_closed() {
+                continue;
             }
             sh.update(|st| {
                 if let Some(x) = st.session.as_mut() {
@@ -633,16 +672,21 @@ fn split_jpegs(mut r: impl Read, mut each: impl FnMut(Vec<u8>)) {
 }
 
 fn finish(sh: &Arc<Shared>, sess: &Arc<Sess>) {
-    let links: Vec<Arc<Link>> = sess.links().clone();
-    links.iter().for_each(|l| l.close());
-    {
+    sess.close();
+    let was_current = {
         let mut cur = current();
-        if cur.as_ref().is_some_and(|x| Arc::ptr_eq(x, sess)) {
+        let mine = cur.as_ref().is_some_and(|x| Arc::ptr_eq(x, sess));
+        if mine {
             *cur = None;
         }
+        mine
+    };
+    // A session that was replaced must not wipe the state of the one that replaced it.
+    if was_current {
+        sh.update(|st| st.session = None);
+        sh.set_jpeg(None);
     }
-    sh.update(|st| st.session = None);
-    sh.set_jpeg(None);
+    sess.done.store(true, Ordering::Relaxed);
 }
 
 fn ffmpeg_args(p: &Pipe, vdev: Option<&str>) -> Vec<String> {

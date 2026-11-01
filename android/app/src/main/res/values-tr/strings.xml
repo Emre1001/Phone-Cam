@@ -88,4 +88,15 @@
     <string name="trust_title">Bu PC’ye güvenilsin mi? Anahtar %1$s. PC uygulamasında gösterilen anahtarla aynı olmalı.</string>
     <string name="trust_ok">Eşleşiyor, güven</string>
     <string name="live_links">%1$s · şifreli · PC %2$s</string>
+    <string name="hot">Telefon ısındı: yavaşlamaması için bit hızı düşürüldü.</string>
+    <string name="dim">Ekranı karart</string>
+    <string name="dim_hint">Yayın sürüyor · uyandırmak için dokun</string>
+    <string name="battery_title">Ekran kapalıyken yayına devam et</string>
+    <string name="battery_text">Android, ekran kapandığında yayını durdurabilir. Phone-Cam’i pil optimizasyonundan muaf tut (Samsung: “Kısıtlanmamış”).</string>
+    <string name="battery_text_xiaomi">HyperOS arka plandaki uygulamaları durdurur. Phone-Cam’i pil optimizasyonundan muaf tut (“Kısıtlama yok”) ve Otomatik başlatmaya izin ver.</string>
+    <string name="battery_allow">Pil optimizasyonundan muaf tut</string>
+    <string name="battery_autostart">Otomatik başlatmaya izin ver</string>
+    <string name="stabilize">Görüntü sabitleme</string>
+    <string name="stabilize_hint">Elde çekim için. Görüntüyü biraz kırpar ve gecikmeyi artırır; optik sabitleme zaten açık kalır.</string>
+    <string name="this_phone">Bu telefon: %1$s</string>
 </resources>

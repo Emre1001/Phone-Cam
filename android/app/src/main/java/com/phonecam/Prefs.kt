@@ -15,6 +15,7 @@ class Prefs(ctx: Context) {
     var maxHeight: Int get() = sp.getInt("maxHeight", 0); set(v) = put("maxHeight", v)        // 0 = auto
     var maxFps: Int get() = sp.getInt("maxFps", 0); set(v) = put("maxFps", v)                  // 0 = auto
     var codec: String get() = sp.getString("codec", "auto")!!; set(v) = put("codec", v)        // auto | h264 | hevc
+    var stabilize: Boolean get() = sp.getBoolean("stabilize", false); set(v) = put("stabilize", v)    // electronic stabilisation
     var bitrateMbit: Int get() = sp.getInt("bitrateMbit", 0); set(v) = put("bitrateMbit", v)   // 0 = auto
     var theme: String get() = sp.getString("theme", "system")!!; set(v) = put("theme", v)      // system | light | dark
     var lang: String get() = sp.getString("lang", "system")!!; set(v) = put("lang", v)         // system | de | en | tr

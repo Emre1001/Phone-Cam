@@ -20,6 +20,8 @@ data class Mode(
     val hevc: Boolean,
     val kbps: Int,
     val fpsRange: Range<Int>,
+    /** MediaCodec name of the hardware encoder picked for this mode, e.g. c2.qti.hevc.encoder. */
+    val encoder: String,
 ) {
     val codecName get() = if (hevc) "HEVC" else "H.264"
     val mime get() = if (hevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
@@ -73,11 +75,19 @@ object Caps {
     private fun isSoftware(i: MediaCodecInfo): Boolean =
         if (android.os.Build.VERSION.SDK_INT >= 29) i.isSoftwareOnly else i.name.startsWith("OMX.google") || i.name.startsWith("c2.android")
 
+    /**
+     * Name of the best encoder for this size and rate: hardware first, never a ".secure" (DRM) one.
+     * Picking by name matters: createEncoderByType may hand out a software or secure encoder on some phones.
+     */
+    fun encoderFor(mime: String, w: Int, h: Int, fps: Int, allowSoftware: Boolean = false): String? =
+        MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter { info ->
+            info.isEncoder && !info.name.endsWith(".secure") && info.supportedTypes.any { it.equals(mime, ignoreCase = true) } &&
+                (allowSoftware || !isSoftware(info)) &&
+                try { info.getCapabilitiesForType(mime).videoCapabilities.areSizeAndRateSupported(w, h, fps.toDouble()) } catch (_: Exception) { false }
+        }.sortedBy { if (isSoftware(it)) 1 else 0 }.firstOrNull()?.name
+
     fun hasHardwareEncoder(mime: String, w: Int, h: Int, fps: Int, allowSoftware: Boolean = false): Boolean =
-        MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any {
-            it.isEncoder && mime in it.supportedTypes && (allowSoftware || !isSoftware(it)) &&
-                it.getCapabilitiesForType(mime).videoCapabilities.areSizeAndRateSupported(w, h, fps.toDouble())
-        }
+        encoderFor(mime, w, h, fps, allowSoftware) != null
 
     fun autoKbps(w: Int, h: Int, fps: Int, hevc: Boolean, usb: Boolean): Int {
         val bitsPerPixel = if (hevc) 0.06 else 0.1
@@ -101,12 +111,16 @@ object Caps {
             for ((w, h, fps) in LADDER) {
                 if (maxHeight in 1 until h || maxFps in 1 until fps || (soft && h > 1080)) continue
                 val range = cameraSupports(ch, w, h, fps) ?: continue
-                val order = when (codec) { "h264" -> listOf(false); "hevc" -> listOf(true); else -> listOf(true, false) }
+                val order = when (codec) {
+                    "h264" -> listOf(false)
+                    "hevc" -> listOf(true)
+                    else -> if (Device.preferHevc) listOf(true, false) else listOf(false, true)
+                }
                 for (hevc in order) {
                     val mime = if (hevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
-                    if (!hasHardwareEncoder(mime, w, h, fps, soft)) continue
+                    val encoder = encoderFor(mime, w, h, fps, soft) ?: continue
                     val kbps = if (bitrateMbit > 0) bitrateMbit * 1000 else autoKbps(w, h, fps, hevc, usb)
-                    val mode = Mode(id, front, sensor, w, h, fps, hevc, kbps, range)
+                    val mode = Mode(id, front, sensor, w, h, fps, hevc, kbps, range, encoder)
                     if (skipFailed && mode.key in failed) continue
                     return mode
                 }

@@ -1,6 +1,9 @@
 package com.phonecam
 
+import android.content.Context
+import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import java.io.Closeable
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -22,6 +25,13 @@ const val DISCOVERY_PORT = 47801
 private const val MAX_RECORD = (16 shl 20) + 16
 /** The PC pings every second; a link that stays silent this long is dead (Wi-Fi gone, PC asleep). */
 private const val DEAD_AFTER_MS = 5000
+
+/** The Wi-Fi network, also when the phone routes its traffic over mobile data (Wi-Fi without internet). */
+fun findWifiNetwork(ctx: Context): Network? {
+    val cm = ctx.getSystemService(ConnectivityManager::class.java) ?: return null
+    @Suppress("DEPRECATION")
+    return cm.allNetworks.firstOrNull { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
+}
 
 /** One encrypted TCP link to the PC app. Protocol: docs/PROTOCOL.md. */
 class SecureLink private constructor(
@@ -181,11 +191,15 @@ object Session {
 data class Pc(val name: String, val host: String)
 
 object Discovery {
-    /** Broadcasts "PCAM?" on every network and collects answers for `waitMs`. */
-    fun find(waitMs: Long = 1500): List<Pc> {
+    /**
+     * Broadcasts "PCAM?" and collects answers for `waitMs`. With `network` the socket is bound to Wi-Fi, so the
+     * search works when the phone sends its traffic over mobile data (Samsung and Xiaomi do that on Wi-Fi without internet).
+     */
+    fun find(waitMs: Long = 1500, network: Network? = null): List<Pc> {
         val found = LinkedHashMap<String, Pc>()
         try {
             DatagramSocket().use { sock ->
+                try { network?.bindSocket(sock) } catch (_: Exception) {}
                 sock.broadcast = true
                 sock.soTimeout = 250
                 val msg = "PCAM?".toByteArray()
