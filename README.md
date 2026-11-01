@@ -28,7 +28,8 @@ Per USB-Kabel, WLAN oder beidem gleichzeitig. Verschlüsselt. Bis 4K mit 60 fps.
 Eine App am Handy filmt, eine App am PC empfängt. Der PC stellt das Bild als Kamera **„Phone-Cam“** bereit, die du in Zoom, OBS, Meet, Discord oder jeder anderen Video-App auswählst.
 
 - **USB, WLAN oder beides**: Über USB braucht es weder WLAN noch PIN. Mit *USB + WLAN* laufen beide Wege gleichzeitig: mehr Bandbreite, und fällt einer aus, läuft der andere weiter.
-- **Bis 4K bei 60 fps**: Die Handy-App fragt Kamera und Hardware-Encoder und nimmt den besten Modus, den beide schaffen. HEVC, wenn möglich, sonst H.264.
+- **Bis 4K bei 60 fps**: Die Handy-App fragt Kamera und Hardware-Encoder und nimmt den besten Modus, den beide schaffen, automatisch bis 1080p (1440p und 4K lassen sich wählen). HEVC, wenn möglich, sonst H.264. Liefert ein Modus auf deinem Handy kein Bild, schaltet die App selbst eine Stufe herunter.
+- **Flüssig**: USB hat Vorrang, WLAN springt ein. Bei Engpässen senkt das Handy die Bitrate und hebt sie wieder an, sobald die Verbindung mitkommt. Tote Verbindungen werden nach Sekunden erkannt und neu aufgebaut.
 - **Verschlüsselt**: Jede Verbindung nutzt ECDH P-256 und AES-256-GCM. Der PC weist sich mit einem eigenen Schlüssel aus, das Handy merkt ihn sich.
 - **Klein**: Die PC-App ist eine einzige Datei mit rund 700 KB, ohne Electron. Die Handy-App hat unter 200 KB.
 - **Ruhig**: Hell, Dunkel oder wie das System. Deutsch, English, Türkçe. Updates kommen aus den GitHub Releases.
@@ -96,9 +97,15 @@ In der PC-App unter *Virtuelle Kamera* einmal **Einrichten** klicken. Das lädt 
 </details>
 
 <details>
+<summary><b>Verbunden, aber kein Bild</b></summary>
+
+Die PC-App zeigt „Warte auf das erste Bild“, solange vom Handy nichts ankommt. Die Handy-App versucht nach 4 Sekunden ohne Bild von selbst den nächstkleineren Modus. Hilft das nicht, am Handy unter *Einstellungen* die Auflösung auf 1080p oder 720p und den Codec auf H.264 stellen. Meldet ffmpeg einen Fehler, steht er in der PC-App unter der Vorschau.
+</details>
+
+<details>
 <summary><b>„Phone-Cam“ fehlt in der Video-App</b></summary>
 
-In der PC-App *Einrichten* klicken, dann die Video-App neu starten. Von Hand:
+In der PC-App *Einrichten* klicken, dann die Video-App neu starten. Kann ffmpeg nicht in die virtuelle Kamera schreiben, läuft die Vorschau trotzdem weiter und die PC-App zeigt den Grund im Feld *Virtuelle Kamera*. Von Hand:
 
 ```bash
 sudo modprobe v4l2loopback exclusive_caps=1 card_label=Phone-Cam video_nr=42
@@ -141,7 +148,7 @@ flowchart LR
   end
 ```
 
-Jedes Bild bekommt eine laufende Nummer. Das Handy schickt es über die Verbindung, in der gerade am wenigsten wartet. Der PC sortiert die Bilder wieder. Fehlt eines länger als 150 ms, macht er beim nächsten Schlüsselbild weiter und fordert eines an.
+Jedes Bild bekommt eine laufende Nummer. Das Handy schickt es über USB, solange dort wenig wartet, sonst über die Verbindung, in der am wenigsten wartet. Der PC sortiert die Bilder wieder. Fehlt eines länger als 150 ms, macht er beim nächsten Schlüsselbild weiter und fordert eines an. Die virtuelle Kamera bekommt standardmäßig höchstens 1080p (einstellbar), das spart am PC viel Rechenzeit.
 
 ## Selbst bauen
 

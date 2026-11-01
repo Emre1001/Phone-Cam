@@ -20,6 +20,8 @@ import javax.crypto.KeyAgreement
 const val CAM_PORT = 47800
 const val DISCOVERY_PORT = 47801
 private const val MAX_RECORD = (16 shl 20) + 16
+/** The PC pings every second; a link that stays silent this long is dead (Wi-Fi gone, PC asleep). */
+private const val DEAD_AFTER_MS = 5000
 
 /** One encrypted TCP link to the PC app. Protocol: docs/PROTOCOL.md. */
 class SecureLink private constructor(
@@ -48,6 +50,13 @@ class SecureLink private constructor(
         return try { opener.open(ct) } catch (e: Exception) { throw IOException("record authentication failed") }
     }
 
+    /**
+     * True once the PC sent a keepalive ('P', PC app 0.0.2 and newer). Only then the phone sends its own
+     * keepalives (older PC apps would reject them) and treats a silent link as dead.
+     */
+    @Volatile var pcPings = false
+        private set
+
     /** Reads PC to phone control messages until the link ends. */
     fun readControl(onKey: () -> Unit, onBitrate: (Int) -> Unit) {
         try {
@@ -56,6 +65,7 @@ class SecureLink private constructor(
                 when (m.firstOrNull()?.toInt()?.toChar()) {
                     'K' -> onKey()
                     'B' -> if (m.size >= 5) onBitrate(ByteBuffer.wrap(m, 1, 4).int)
+                    'P' -> if (!pcPings) { pcPings = true; sock.soTimeout = DEAD_AFTER_MS }
                     else -> {}
                 }
             }
@@ -67,7 +77,7 @@ class SecureLink private constructor(
         try { sock.close() } catch (_: Exception) {}
     }
 
-    /** After the session handshake: control messages may be minutes apart, so no read timeout. */
+    /** After the session handshake: no read timeout until the PC proves it sends keepalives (see [pcPings]). */
     fun established() { sock.soTimeout = 0 }
 
     companion object {

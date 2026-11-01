@@ -44,7 +44,7 @@
     <string name="facing_back">Arka</string>
     <string name="facing_front">Ön</string>
     <string name="resolution">Çözünürlük</string>
-    <string name="res_auto">Otomatik (en iyi)</string>
+    <string name="res_auto">Otomatik (1080p’ye kadar)</string>
     <string name="fps">Kare hızı</string>
     <string name="fps_auto">Otomatik (en iyi)</string>
     <string name="codec">Codec</string>
@@ -52,7 +52,7 @@
     <string name="bitrate">Bit hızı</string>
     <string name="bitrate_auto">Otomatik</string>
     <string name="bitrate_value">%1$s Mbit/s</string>
-    <string name="quality_hint">Otomatik, bu telefonun desteklediği en iyi modu seçer; 60 fps’de 4K’ya kadar.</string>
+    <string name="quality_hint">Otomatik, 1080p’ye kadar en iyi modu seçer; görüntülü görüşmeler için ideal. 1440p ve 4K Çözünürlük altından seçilebilir ama güçlü bir PC gerektirir. Bir mod görüntü vermezse uygulama kendiliğinden bir alt kademeye geçer.</string>
     <string name="updates">Güncellemeler</string>
     <string name="update_version">Sürüm %1$s</string>
     <string name="update_check">Güncellemeleri denetle</string>

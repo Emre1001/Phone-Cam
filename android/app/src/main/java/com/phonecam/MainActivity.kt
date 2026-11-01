@@ -460,20 +460,20 @@ class MainActivity : ComponentActivity() {
         val fpsItems = listOf("0" to getString(R.string.fps_auto)) + avail.map { it.third }.distinct().map { it.toString() to "$it fps" }
         group(R.string.camera, listOf(
             stackedRow(R.string.facing, null, Segmented(context, pal, listOf(getString(R.string.facing_back), getString(R.string.facing_front)), if (prefs.front) 1 else 0) {
-                prefs.front = it == 1; updateStreamLine(); recreateSettingsLater()
+                prefs.front = it == 1; Caps.failed.clear(); updateStreamLine(); recreateSettingsLater()
             }),
             pickerRow(R.string.resolution, resItems.firstOrNull { it.first == prefs.maxHeight.toString() }?.second ?: getString(R.string.res_auto)) {
-                sheet(this@MainActivity, pal, getString(R.string.resolution), resItems, prefs.maxHeight.toString()) { prefs.maxHeight = it.toInt(); updateStreamLine(); refreshSettings() }.show()
+                sheet(this@MainActivity, pal, getString(R.string.resolution), resItems, prefs.maxHeight.toString()) { prefs.maxHeight = it.toInt(); Caps.failed.clear(); updateStreamLine(); refreshSettings() }.show()
             },
             pickerRow(R.string.fps, if (prefs.maxFps == 0) getString(R.string.fps_auto) else "${prefs.maxFps} fps") {
-                sheet(this@MainActivity, pal, getString(R.string.fps), fpsItems, prefs.maxFps.toString()) { prefs.maxFps = it.toInt(); updateStreamLine(); refreshSettings() }.show()
+                sheet(this@MainActivity, pal, getString(R.string.fps), fpsItems, prefs.maxFps.toString()) { prefs.maxFps = it.toInt(); Caps.failed.clear(); updateStreamLine(); refreshSettings() }.show()
             },
             pickerRow(R.string.codec, when (prefs.codec) { "h264" -> "H.264"; "hevc" -> "HEVC"; else -> getString(R.string.codec_auto) }) {
-                sheet(this@MainActivity, pal, getString(R.string.codec), listOf("auto" to getString(R.string.codec_auto), "hevc" to "HEVC", "h264" to "H.264"), prefs.codec) { prefs.codec = it; updateStreamLine(); refreshSettings() }.show()
+                sheet(this@MainActivity, pal, getString(R.string.codec), listOf("auto" to getString(R.string.codec_auto), "hevc" to "HEVC", "h264" to "H.264"), prefs.codec) { prefs.codec = it; Caps.failed.clear(); updateStreamLine(); refreshSettings() }.show()
             },
             pickerRow(R.string.bitrate, if (prefs.bitrateMbit == 0) getString(R.string.bitrate_auto) else getString(R.string.bitrate_value, prefs.bitrateMbit.toString())) {
                 val items = listOf("0" to getString(R.string.bitrate_auto)) + listOf(8, 16, 30, 50, 80).map { it.toString() to getString(R.string.bitrate_value, it.toString()) }
-                sheet(this@MainActivity, pal, getString(R.string.bitrate), items, prefs.bitrateMbit.toString()) { prefs.bitrateMbit = it.toInt(); updateStreamLine(); refreshSettings() }.show()
+                sheet(this@MainActivity, pal, getString(R.string.bitrate), items, prefs.bitrateMbit.toString()) { prefs.bitrateMbit = it.toInt(); Caps.failed.clear(); updateStreamLine(); refreshSettings() }.show()
             },
         ))
         add(text(context, pal, getString(R.string.quality_hint), 12.5f, muted = true).apply { setPadding(dp(4), dp(8), dp(4), 0) })

@@ -104,6 +104,9 @@ fn post(sh: &Arc<Shared>, s: &mut TcpStream, path: &str, body: &str) -> io::Resu
                 if let Some(m) = form_get(body, "mirror") {
                     st.mirror = m == "1";
                 }
+                if let Some(m) = form_get(body, "vcam_max").and_then(|m| m.parse::<u16>().ok()).filter(|m| settings::VCAM_MAX.contains(m)) {
+                    st.vcam_max = m;
+                }
                 settings::save(st);
             });
             ok(s)
@@ -144,8 +147,9 @@ fn post(sh: &Arc<Shared>, s: &mut TcpStream, path: &str, body: &str) -> io::Resu
             ok(s)
         }
         "/api/quit" => {
-            sh.update(|st| st.quit = true);
-            ok(s)
+            let r = ok(s);
+            sh.quit();
+            r
         }
         _ => send(s, "404 Not Found", "text/plain", b"not found"),
     }
@@ -168,21 +172,33 @@ fn events(sh: &Arc<Shared>, mut s: TcpStream) -> io::Result<()> {
     }
 }
 
+/// MJPEG stream for the UI. The boundary follows each picture at once: browsers show a part only
+/// when the next boundary arrives, so a trailing boundary saves one picture of delay.
+/// The stream outlives sessions (a reconnecting phone shows up without reloading the image).
 fn preview(sh: &Arc<Shared>, mut s: TcpStream) -> io::Result<()> {
-    s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=f\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n")?;
+    s.set_nodelay(true)?;
+    s.set_write_timeout(Some(Duration::from_secs(5)))?;
+    s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=f\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n--f\r\n")?;
     let (mut seq, mut idle) = (0, 0);
     loop {
-        match sh.wait_jpeg(seq, 3000) {
-            Some((n, jpg)) => {
-                seq = n;
+        let (n, pic) = sh.wait_jpeg(seq, 2000);
+        let changed = n != seq;
+        seq = n;
+        match pic {
+            Some(jpg) => {
                 idle = 0;
-                write!(s, "--f\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n", jpg.len())?;
-                s.write_all(&jpg)?;
-                s.write_all(b"\r\n")?;
+                let mut part = Vec::with_capacity(jpg.len() + 80);
+                write!(part, "Content-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n", jpg.len())?;
+                part.extend_from_slice(&jpg);
+                part.extend_from_slice(b"\r\n--f\r\n");
+                s.write_all(&part)?;
             }
             None => {
-                idle += 1;
-                if idle >= 2 && sh.read(|st| st.session.is_none() || st.quit) {
+                if !changed {
+                    idle += 1;
+                }
+                // No session for a while: end the stream, the UI opens a new one for the next session.
+                if sh.read(|st| st.quit || (st.session.is_none() && idle >= 15)) {
                     return Ok(());
                 }
             }

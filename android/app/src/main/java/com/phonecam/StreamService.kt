@@ -14,6 +14,7 @@ import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
+import android.hardware.display.DisplayManager
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
@@ -28,12 +29,17 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
+import android.view.Display
 import android.view.OrientationEventListener
 import android.view.Surface
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+
+/** The camera delivered no picture in this mode; the next try steps down to a smaller one. */
+private class NoPictureException(val mode: Mode) : IOException("no picture in ${mode.width}x${mode.height}@${mode.fps}")
 
 /** Foreground service: connects to the PC, then runs camera -> hardware encoder -> network. */
 class StreamService : Service() {
@@ -41,7 +47,8 @@ class StreamService : Service() {
     private var worker: Thread? = null
     private var wake: PowerManager.WakeLock? = null
     private var wifi: WifiManager.WifiLock? = null
-    private var orientation = 0
+    /** Device rotation in degrees (like Surface.ROTATION_*), -1 until the sensor answered. */
+    @Volatile private var orientation = -1
     private var orientationListener: OrientationEventListener? = null
 
     override fun attachBaseContext(base: Context) = super.attachBaseContext(Prefs.wrap(base))
@@ -96,7 +103,10 @@ class StreamService : Service() {
             while (running) {
                 val mode = Caps.resolve(this, prefs)
                 Log.i(TAG, "mode=$mode")
-                if (mode == null) { Status.publish(Snap(error = Err.NO_CAMERA)); break }
+                if (mode == null) {
+                    Status.publish(Snap(error = if (Caps.failed.isEmpty()) Err.NO_CAMERA else Err.CAMERA, detail = "no picture"))
+                    break
+                }
                 Status.publish(Snap(Snap.State.SEARCHING, mode = mode))
                 val both = prefs.mode == "both"
                 // USB first when it may be used: it needs no PIN and pins the PC key safely.
@@ -120,6 +130,10 @@ class StreamService : Service() {
                         try {
                             Log.i(TAG, "streaming via ${result.link.via}, pc ips ${result.pcIps}")
                             stream(mode, result, both)
+                        } catch (e: NoPictureException) {
+                            // This mode looked supported but delivers nothing on this phone: never use it again (this run).
+                            Log.w(TAG, e.message.orEmpty())
+                            Caps.failed.add(e.mode.key)
                         } catch (e: CameraAccessException) {
                             Log.e(TAG, "camera", e)
                             Status.publish(Snap(error = Err.CAMERA, detail = e.message.orEmpty())); break
@@ -135,7 +149,7 @@ class StreamService : Service() {
                         } finally {
                             result.link.close()
                         }
-                        if (running) { Status.publish(Snap(Snap.State.WAITING, mode = mode)); sleep(800) }
+                        if (running) { Status.publish(Snap(Snap.State.WAITING, mode = mode)); sleep(500) }
                     }
                 }
             }
@@ -156,33 +170,53 @@ class StreamService : Service() {
 
     private fun sleep(ms: Long) = Thread.sleep(ms)
 
+    /** The orientation sensor answers within a few events; until then the display rotation is the best guess. */
+    private fun deviceOrientation(): Int {
+        val end = System.currentTimeMillis() + 400
+        while (orientation < 0 && System.currentTimeMillis() < end) Thread.sleep(20)
+        if (orientation >= 0) return orientation
+        val d = getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
+        return (d?.rotation ?: 0) * 90
+    }
+
     /** Degrees clockwise the PC must turn the picture so it appears upright. */
-    private fun rotationFor(m: Mode) =
-        if (m.front) (m.sensorOrientation + orientation) % 360 else (m.sensorOrientation - orientation + 360) % 360
+    private fun rotationFor(m: Mode): Int {
+        val o = deviceOrientation()
+        return if (m.front) (m.sensorOrientation + o) % 360 else (m.sensorOrientation - o + 360) % 360
+    }
 
     /* ---------- One streaming session ---------- */
     @SuppressLint("MissingPermission")
     private fun stream(m: Mode, first: Session.Result.Ok, both: Boolean) {
         val camThread = HandlerThread("phonecam-camera").also { it.start() }
         val camHandler = Handler(camThread.looper)
-        val codec = createEncoder(m)
+        // An encoder that refuses this mode is handled like a camera without picture: the next try steps down.
+        val codec = try { createEncoder(m) } catch (e: Exception) { camThread.quitSafely(); throw NoPictureException(m).apply { initCause(e) } }
+        // Links run first: their keepalives flow while the camera starts, which can take a few seconds.
+        val bond = Bond(onKey = { requestKeyFrame(codec) }, onBitrate = { kbps -> setBitrate(codec, kbps) })
+        bond.add(first.link)
+        Status.publish(Snap(Snap.State.CONNECTING, mode = m, pcKey = first.link.pcKey))
+        val joiner = if (both) Thread({ joinLoop(bond, first) }, "phonecam-join").also { it.isDaemon = true; it.start() } else null
         var camera: CameraDevice? = null
         var session: CameraCaptureSession? = null
+        // Set by the camera callbacks: -1 disconnected (another app took the camera), > 0 CameraDevice error.
+        val cameraError = AtomicInteger(0)
         try {
-            Log.i(TAG, "createInputSurface")
-            val surface = codec.createInputSurface()
-            Log.i(TAG, "codec started")
-            codec.start()
+            val surface = try {
+                codec.createInputSurface().also { codec.start() }
+            } catch (e: IllegalStateException) {
+                throw NoPictureException(m).apply { initCause(e) }
+            }
+            Log.i(TAG, "encoder started")
 
             val cm = getSystemService(Context.CAMERA_SERVICE) as CameraManager
             val opened = CountDownLatch(1)
-            var openError: Int? = null
             cm.openCamera(m.cameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(c: CameraDevice) { camera = c; opened.countDown() }
-                override fun onDisconnected(c: CameraDevice) { c.close(); openError = -1; opened.countDown() }
-                override fun onError(c: CameraDevice, error: Int) { c.close(); openError = error; opened.countDown() }
+                override fun onDisconnected(c: CameraDevice) { c.close(); cameraError.set(-1); opened.countDown() }
+                override fun onError(c: CameraDevice, error: Int) { c.close(); cameraError.set(error); opened.countDown() }
             }, camHandler)
-            if (!opened.await(5, TimeUnit.SECONDS) || camera == null) throw IOException("camera open failed ${openError ?: "timeout"}")
+            if (!opened.await(5, TimeUnit.SECONDS) || camera == null) throw IOException("camera open failed ${cameraError.get().takeIf { it != 0 } ?: "timeout"}")
 
             Log.i(TAG, "camera opened")
             val configured = CountDownLatch(1)
@@ -191,7 +225,8 @@ class StreamService : Service() {
                 override fun onConfigured(s: CameraCaptureSession) { session = s; configured.countDown() }
                 override fun onConfigureFailed(s: CameraCaptureSession) { configured.countDown() }
             }, camHandler)
-            if (!configured.await(5, TimeUnit.SECONDS) || session == null) throw IOException("camera session failed")
+            // A mode the camera cannot combine with the encoder fails here: step down like with no picture.
+            if (!configured.await(5, TimeUnit.SECONDS) || session == null) throw NoPictureException(m)
 
             Log.i(TAG, "session configured")
             val req = camera!!.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
@@ -200,17 +235,10 @@ class StreamService : Service() {
                 set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
             }.build()
             session!!.setRepeatingRequest(req, null, camHandler)
-
-            val bond = Bond(onKey = { requestKeyFrame(codec) }, onBitrate = { kbps -> setBitrate(codec, kbps) })
-            bond.add(first.link)
-            val joiner = if (both) Thread({ joinLoop(bond, first) }, "phonecam-join").also { it.isDaemon = true; it.start() } else null
-            try {
-                drain(codec, bond, m)
-            } finally {
-                joiner?.interrupt()
-                bond.closeAll()
-            }
+            drain(codec, bond, m, cameraError)
         } finally {
+            joiner?.interrupt()
+            bond.closeAll()
             try { session?.close() } catch (_: Exception) {}
             try { camera?.close() } catch (_: Exception) {}
             try { codec.stop() } catch (_: Exception) {}
@@ -227,7 +255,8 @@ class StreamService : Service() {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, m.kbps * 1000)
                 setInteger(MediaFormat.KEY_FRAME_RATE, m.fps)
-                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                // Key frames are big; the PC asks for one when it lost a frame, so a regular one every 2 s is enough.
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
                 if (level < 2) setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
                 if (level < 1) {
                     setInteger("prepend-sps-pps-to-idr-frames", 1)
@@ -249,7 +278,13 @@ class StreamService : Service() {
         throw last ?: IOException("encoder")
     }
 
+    @Volatile private var lastKeyRequest = 0L
+
+    /** Asks the encoder for a key frame, at most every 300 ms: each one costs a burst of bandwidth. */
     private fun requestKeyFrame(codec: MediaCodec) {
+        val now = System.currentTimeMillis()
+        if (now - lastKeyRequest < 300) return
+        lastKeyRequest = now
         try { codec.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) }) } catch (_: Exception) {}
     }
 
@@ -276,50 +311,82 @@ class StreamService : Service() {
         }
     }
 
-    /** Pulls encoded frames and spreads them over the links. Congestion drops delta frames until the next key frame. */
-    private fun drain(codec: MediaCodec, bond: Bond, m: Mode) {
+    /**
+     * Pulls encoded frames and spreads them over the links. Congestion drops delta frames until the next key frame
+     * and lowers the bitrate; it climbs back to the target once the links keep up again.
+     */
+    private fun drain(codec: MediaCodec, bond: Bond, m: Mode, cameraError: AtomicInteger) {
         val info = MediaCodec.BufferInfo()
         var config = ByteArray(0)
         var skipping = false
         var seq = 0
         var frames = 0
-        var mark = System.currentTimeMillis()
-        var lastNotify = 0
-        // At most ~300 ms of video may wait in a link queue.
+        var pictures = 0L
+        val started = System.currentTimeMillis()
+        var lastPicture = started
+        var mark = started
+        var lastNotify = -1
+        // At most ~300 ms of video may wait in a link queue; the preferred link (USB) takes frames below ~2 frames.
         val maxQueued = maxOf(512 * 1024L, m.kbps * 1000L / 8 * 3 / 10)
+        val lowWater = maxOf(96 * 1024L, m.kbps * 1000L / 8 / m.fps * 2)
+        val target = m.kbps
+        var kbps = target
+        var lastCut = 0L
+        var lastChange = started
         while (running) {
             if (bond.isEmpty()) throw IOException("all links closed")
-            val i = codec.dequeueOutputBuffer(info, 200_000)
-            if (i < 0) continue
-            val buf = codec.getOutputBuffer(i)
-            if (buf != null && info.size > 0) {
-                buf.position(info.offset); buf.limit(info.offset + info.size)
-                val data = ByteArray(info.size).also { buf.get(it) }
-                val isConfig = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
-                val isKey = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
-                if (isConfig) config = data
-                if (isConfig || !skipping || isKey) {
-                    val type = if (isConfig) 1 else if (isKey) 2 else 3
-                    val payload = if (isKey && !startsWith(data, config)) config + data else data
-                    val rec = ByteBuffer.allocate(13 + payload.size).put(type.toByte()).putInt(seq).putLong(info.presentationTimeUs).put(payload).array()
-                    if (bond.send(rec, maxQueued)) {
-                        seq++
-                        if (!isConfig) frames++
-                        skipping = false
-                    } else if (!isConfig) {
-                        skipping = true
-                        requestKeyFrame(codec)
+            cameraError.get().let { if (it != 0) throw IOException("camera error $it") }
+            val i = codec.dequeueOutputBuffer(info, 100_000)
+            val now = System.currentTimeMillis()
+            if (i >= 0) {
+                val buf = codec.getOutputBuffer(i)
+                if (buf != null && info.size > 0) {
+                    buf.position(info.offset); buf.limit(info.offset + info.size)
+                    val data = ByteArray(info.size).also { buf.get(it) }
+                    val isConfig = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                    val isKey = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
+                    if (isConfig) config = data else { pictures++; lastPicture = now }
+                    if (isConfig || !skipping || isKey) {
+                        val type = if (isConfig) 1 else if (isKey) 2 else 3
+                        val payload = if (isKey && !startsWith(data, config)) config + data else data
+                        val rec = ByteBuffer.allocate(13 + payload.size).put(type.toByte()).putInt(seq).putLong(info.presentationTimeUs).put(payload).array()
+                        if (bond.send(rec, maxQueued, lowWater)) {
+                            seq++
+                            if (!isConfig) frames++
+                            skipping = false
+                        } else if (!isConfig) {
+                            skipping = true
+                            requestKeyFrame(codec)
+                            // The network does not keep up: lower the bitrate (at most once a second).
+                            if (now - lastCut > 1000 && kbps > MIN_KBPS) {
+                                kbps = maxOf(MIN_KBPS, maxOf(target / 4, kbps * 7 / 10))
+                                setBitrate(codec, kbps)
+                                lastCut = now; lastChange = now
+                                Log.i(TAG, "congestion, bitrate $kbps kbit/s")
+                            }
+                        }
                     }
                 }
+                codec.releaseOutputBuffer(i, false)
             }
-            codec.releaseOutputBuffer(i, false)
-            val now = System.currentTimeMillis()
+            // Watchdogs: a mode that never delivers, or a camera that stops.
+            if (pictures == 0L && now - started > FIRST_PICTURE_MS) throw NoPictureException(m)
+            if (pictures > 0 && now - lastPicture > STALL_MS) throw IOException("camera stalled")
+            // Calm for a while: climb back towards the target bitrate.
+            if (kbps < target && now - lastCut > 4000 && now - lastChange > 2000) {
+                kbps = minOf(target, kbps * 115 / 100 + 250)
+                setBitrate(codec, kbps)
+                lastChange = now
+            }
             if (now - mark >= 1000) {
                 val fps = (frames * 1000L / (now - mark)).toInt()
                 val links = bond.rates(now - mark)
-                val kbps = links.sumOf { it.second }
-                Status.publish(Snap(Snap.State.LIVE, mode = m, fps = fps, kbps = kbps, links = links, pcKey = bond.pcKey()))
-                if (kotlin.math.abs(fps - lastNotify) > 1) { notify(getString(R.string.notif_live, fps, "%.1f".format(kbps / 1000.0))); lastNotify = fps }
+                val sent = links.sumOf { it.second }
+                val state = if (pictures > 0) Snap.State.LIVE else Snap.State.CONNECTING
+                Status.publish(Snap(state, mode = m, fps = fps, kbps = sent, links = links, pcKey = bond.pcKey()))
+                if (pictures > 0 && kotlin.math.abs(fps - lastNotify) > 1) {
+                    notify(getString(R.string.notif_live, fps, "%.1f".format(sent / 1000.0))); lastNotify = fps
+                }
                 frames = 0; mark = now
             }
         }
@@ -369,6 +436,11 @@ class StreamService : Service() {
         const val ACTION_STOP = "com.phonecam.STOP"
         private const val CHANNEL = "stream"
         private const val TAG = "PhoneCam"
+        /** A new camera mode must deliver its first picture within this time, else the next smaller one is tried. */
+        private const val FIRST_PICTURE_MS = 4000L
+        /** No picture for this long while streaming: restart camera and encoder. */
+        private const val STALL_MS = 4000L
+        private const val MIN_KBPS = 1000
 
         fun start(ctx: Context) = ctx.startForegroundService(Intent(ctx, StreamService::class.java))
         fun stop(ctx: Context) = ctx.startService(Intent(ctx, StreamService::class.java).setAction(ACTION_STOP))

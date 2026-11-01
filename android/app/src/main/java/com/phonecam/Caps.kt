@@ -1,10 +1,10 @@
 package com.phonecam
 
 import android.content.Context
-import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaFormat
@@ -23,6 +23,8 @@ data class Mode(
 ) {
     val codecName get() = if (hevc) "HEVC" else "H.264"
     val mime get() = if (hevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
+    /** Identifies the mode in [Caps.failed]. */
+    val key get() = "$cameraId:${width}x$height@$fps:${if (hevc) "hevc" else "avc"}"
 }
 
 /** Works out the best video mode the camera AND a hardware encoder both support. */
@@ -35,17 +37,31 @@ object Caps {
         Triple(1280, 720, 60), Triple(1280, 720, 30),
     )
 
+    /** "Auto" goes up to this height. Higher modes need a strong PC to decode, so the user picks them on purpose. */
+    const val AUTO_MAX_HEIGHT = 1080
+
+    /** Modes that delivered no picture on this phone (since app start). [resolve] skips them, so the next try steps down. */
+    val failed: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     fun cameraId(ctx: Context, front: Boolean): String? {
         val cm = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val want = if (front) CameraCharacteristics.LENS_FACING_FRONT else CameraCharacteristics.LENS_FACING_BACK
         return cm.cameraIdList.firstOrNull { cm.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == want }
     }
 
+    /**
+     * The camera feeds the encoder's input surface, so sizes and frame durations are checked for MediaCodec
+     * (SurfaceTexture only as a fallback for old HALs that list nothing there). Returns the AE fps range to use.
+     */
     private fun cameraSupports(ch: CameraCharacteristics, w: Int, h: Int, fps: Int): Range<Int>? {
         val map = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return null
-        val sizes = map.getOutputSizes(SurfaceTexture::class.java).orEmpty().toList() + map.getOutputSizes(ImageFormat.PRIVATE).orEmpty().toList()
+        val codecSizes = map.getOutputSizes(MediaCodec::class.java).orEmpty()
+        val useCodec = codecSizes.isNotEmpty()
+        val sizes = if (useCodec) codecSizes else map.getOutputSizes(SurfaceTexture::class.java).orEmpty()
         val size = sizes.firstOrNull { it.width == w && it.height == h } ?: return null
-        val minDuration = map.getOutputMinFrameDuration(SurfaceTexture::class.java, size)
+        val minDuration = try {
+            if (useCodec) map.getOutputMinFrameDuration(MediaCodec::class.java, size) else map.getOutputMinFrameDuration(SurfaceTexture::class.java, size)
+        } catch (_: IllegalArgumentException) { 0L }
         if (minDuration > 0 && 1_000_000_000.0 / minDuration < fps * 0.98) return null
         val ranges = ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES).orEmpty()
         // Prefer a fixed range (60-60) so the exposure time cannot make frames late.
@@ -69,14 +85,14 @@ object Caps {
         return (w.toDouble() * h * fps * bitsPerPixel / 1000).toInt().coerceIn(2_000, cap)
     }
 
-    /** Best mode for the user's limits, or null when the camera has none. */
+    /** Best mode for the user's limits, or null when the camera has none. Modes that failed before are skipped. */
     fun resolve(ctx: Context, p: Prefs): Mode? =
-        pick(ctx, p.front, p.mode == "usb", p.maxHeight, p.maxFps, p.codec, p.bitrateMbit)
+        pick(ctx, p.front, p.mode == "usb", if (p.maxHeight == 0) AUTO_MAX_HEIGHT else p.maxHeight, p.maxFps, p.codec, p.bitrateMbit, skipFailed = true)
 
     /** Best mode the phone can do at all (for the "best this phone can do" line). */
-    fun best(ctx: Context, front: Boolean, usb: Boolean): Mode? = pick(ctx, front, usb, 0, 0, "auto", 0)
+    fun best(ctx: Context, front: Boolean, usb: Boolean): Mode? = pick(ctx, front, usb, 0, 0, "auto", 0, skipFailed = false)
 
-    private fun pick(ctx: Context, front: Boolean, usb: Boolean, maxHeight: Int, maxFps: Int, codec: String, bitrateMbit: Int): Mode? {
+    private fun pick(ctx: Context, front: Boolean, usb: Boolean, maxHeight: Int, maxFps: Int, codec: String, bitrateMbit: Int, skipFailed: Boolean): Mode? {
         val id = cameraId(ctx, front) ?: return null
         val ch = (ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager).getCameraCharacteristics(id)
         val sensor = ch.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
@@ -90,7 +106,9 @@ object Caps {
                     val mime = if (hevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
                     if (!hasHardwareEncoder(mime, w, h, fps, soft)) continue
                     val kbps = if (bitrateMbit > 0) bitrateMbit * 1000 else autoKbps(w, h, fps, hevc, usb)
-                    return Mode(id, front, sensor, w, h, fps, hevc, kbps, range)
+                    val mode = Mode(id, front, sensor, w, h, fps, hevc, kbps, range)
+                    if (skipFailed && mode.key in failed) continue
+                    return mode
                 }
             }
         }

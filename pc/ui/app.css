@@ -101,6 +101,17 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
   padding: 4px 10px; border-radius: 999px; background: rgb(0 0 0 / 0.62); color: #fff; font-size: 0.75rem; font-weight: 650;
 }
 .live-tag .dot { background: #ff6a3d; }
+.idle .note { margin-block-start: 6px; text-align: start; }
+.pic-wait {
+  position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 20px;
+  background: #000; color: rgb(255 255 255 / 0.82); font-size: 0.875rem; text-align: center;
+}
+.spinner {
+  width: 28px; height: 28px; border-radius: 50%; border: 3px solid rgb(255 255 255 / 0.18); border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px 16px; padding-inline: 4px; }
 .stats dt { color: var(--text-muted); font-size: 0.75rem; }
 .stats dd { font-weight: 600; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
