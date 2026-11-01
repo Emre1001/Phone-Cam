@@ -34,6 +34,20 @@ Eine App am Handy filmt, eine App am PC empfängt. Der PC stellt das Bild als Ka
 - **Klein**: Die PC-App ist eine einzige Datei mit rund 700 KB, ohne Electron. Die Handy-App hat unter 200 KB.
 - **Ruhig**: Hell, Dunkel oder wie das System. Deutsch, English, Türkçe. Updates kommen aus den GitHub Releases.
 
+## Optimierte Handys
+
+Die Handy-App erkennt den Chip und stellt den Hardware-Encoder passend ein. Damit gilt die Optimierung auch für Handys, die unten fehlen.
+
+| Chip | Handys (Beispiele) | Was angepasst wird |
+|---|---|---|
+| Snapdragon | Galaxy S24 Ultra, S25, S25 Ultra, S26 Ultra, Z Fold/Flip, OnePlus, viele Xiaomi | Low-Latency-Modus des Qualcomm-Encoders |
+| Dimensity (MediaTek) | Xiaomi 13T Pro, 14T Pro, 13T, 14T, viele Redmi und Poco | Schlüsselbild jede Sekunde, damit Aussetzer schnell heilen |
+| Exynos, Tensor | Galaxy S24/S24+ (Europa), Galaxy A, Pixel | Standardprofil |
+
+Für alle gilt: keine B-Frames, Encoder auf volle Bildrate getaktet, Videofarben nach BT.709, elektronische Stabilisierung aus (zuschaltbar), optische an, Flimmerschutz für 50/60-Hz-Licht. Wird das Handy warm, senkt die App die Bitrate auf 75 % bzw. 50 %, bevor Android drosselt. Am PC erscheint der Name des Handys („Galaxy S24 Ultra“, „Xiaomi 14T Pro“) statt eines Modellcodes.
+
+**Samsung und Xiaomi (HyperOS)** beenden Apps gern, wenn der Bildschirm ausgeht. Die App zeigt dafür eine Karte: *Von Akku-Optimierung ausnehmen* und bei Xiaomi zusätzlich *Autostart erlauben*. Mit *Bildschirm abdunkeln* bleibt der Stream bei schwarzem Bildschirm und geringster Helligkeit an. Das spart Akku und hält das Handy kühler.
+
 ## Download
 
 | Datei | Für | Braucht |
