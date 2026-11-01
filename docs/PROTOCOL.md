@@ -6,7 +6,7 @@ TCP, phone to PC, port **47800**. Integers big-endian. Every link is encrypted. 
 
 - **USB (adb)**: PC runs `adb reverse tcp:47800 tcp:47800`; phone connects to `127.0.0.1:47800`. Loopback peers need no PIN.
 - **Wi-Fi / LAN**: phone connects to `PC-IP:47800` (socket bound to the Wi-Fi network). PIN required.
-- **USB + Wi-Fi**: first link starts the session, the second link joins it. Frames are spread over both.
+- **USB + Wi-Fi**: first link starts the session, the second link joins it. The phone sends frames over USB while it keeps up and uses Wi-Fi when USB is busy or gone (fewer frames to reorder, lower delay).
 - **Discovery**: phone sends UDP `PCAM?` to broadcast `:47801`; PC answers `PCAM!\n<pc name>\n47800`.
 
 ## Handshake (per link)
@@ -32,6 +32,10 @@ Phone, first record on a link:
 
 PC answer: status `u8`: `0` ok, `1` wrong PIN, `2` busy, `3` bad request, `4` no ffmpeg, `5` unknown session, `6` PIN locked (5 wrong PINs: 30 s). On a new session `0` is followed by the session id (16) and `u8` count + IPv4 addresses (4 bytes each) for joining over Wi-Fi.
 
-Frames, phone to PC: `type u8` (1 config, 2 key, 3 delta), `seq u32`, `pts_us u64`, Annex-B payload. `seq` counts across all links; the PC reorders, waits at most 150 ms for a missing frame, then continues at the next key frame and sends `K`. Key frames carry SPS/PPS(/VPS).
+Frames, phone to PC: `type u8` (1 config, 2 key, 3 delta), `seq u32`, `pts_us u64`, Annex-B payload. `seq` counts across all links; the PC reorders, waits at most 150 ms for a missing frame, then continues at the next key frame and sends `K` (at most every 400 ms). Key frames carry SPS/PPS(/VPS).
 
-Control, PC to phone: `K` key frame request, `B` + `u32` bitrate in kbit/s.
+Keepalive, phone to PC: a record holding the single byte `0`, sent on a link that carried nothing for a second. The phone sends it only after it received a `P` on that link, so PC apps before 0.0.2 never see it.
+
+Control, PC to phone: `K` key frame request, `B` + `u32` bitrate in kbit/s, `P` keepalive (every second on every link, since 0.0.2).
+
+Dead links: the PC closes a link that delivers nothing for 10 s. The phone closes a link that stays silent for 5 s once the PC has sent its first `P`.

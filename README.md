@@ -28,10 +28,25 @@ Per USB-Kabel, WLAN oder beidem gleichzeitig. Verschlüsselt. Bis 4K mit 60 fps.
 Eine App am Handy filmt, eine App am PC empfängt. Der PC stellt das Bild als Kamera **„Phone-Cam“** bereit, die du in Zoom, OBS, Meet, Discord oder jeder anderen Video-App auswählst.
 
 - **USB, WLAN oder beides**: Über USB braucht es weder WLAN noch PIN. Mit *USB + WLAN* laufen beide Wege gleichzeitig: mehr Bandbreite, und fällt einer aus, läuft der andere weiter.
-- **Bis 4K bei 60 fps**: Die Handy-App fragt Kamera und Hardware-Encoder und nimmt den besten Modus, den beide schaffen. HEVC, wenn möglich, sonst H.264.
+- **Bis 4K bei 60 fps**: Die Handy-App fragt Kamera und Hardware-Encoder und nimmt den besten Modus, den beide schaffen, automatisch bis 1080p (1440p und 4K lassen sich wählen). HEVC, wenn möglich, sonst H.264. Liefert ein Modus auf deinem Handy kein Bild, schaltet die App selbst eine Stufe herunter.
+- **Flüssig**: USB hat Vorrang, WLAN springt ein. Bei Engpässen senkt das Handy die Bitrate und hebt sie wieder an, sobald die Verbindung mitkommt. Tote Verbindungen werden nach Sekunden erkannt und neu aufgebaut.
 - **Verschlüsselt**: Jede Verbindung nutzt ECDH P-256 und AES-256-GCM. Der PC weist sich mit einem eigenen Schlüssel aus, das Handy merkt ihn sich.
 - **Klein**: Die PC-App ist eine einzige Datei mit rund 700 KB, ohne Electron. Die Handy-App hat unter 200 KB.
 - **Ruhig**: Hell, Dunkel oder wie das System. Deutsch, English, Türkçe. Updates kommen aus den GitHub Releases.
+
+## Optimierte Handys
+
+Die Handy-App erkennt den Chip und stellt den Hardware-Encoder passend ein. Damit gilt die Optimierung auch für Handys, die unten fehlen.
+
+| Chip | Handys (Beispiele) | Was angepasst wird |
+|---|---|---|
+| Snapdragon | Galaxy S24 Ultra, S25, S25 Ultra, S26 Ultra, Z Fold/Flip, OnePlus, viele Xiaomi | Low-Latency-Modus des Qualcomm-Encoders |
+| Dimensity (MediaTek) | Xiaomi 13T Pro, 14T Pro, 13T, 14T, viele Redmi und Poco | Schlüsselbild jede Sekunde, damit Aussetzer schnell heilen |
+| Exynos, Tensor | Galaxy S24/S24+ (Europa), Galaxy A, Pixel | Standardprofil |
+
+Für alle gilt: keine B-Frames, Encoder auf volle Bildrate getaktet, Videofarben nach BT.709, elektronische Stabilisierung aus (zuschaltbar), optische an, Flimmerschutz für 50/60-Hz-Licht. Wird das Handy warm, senkt die App die Bitrate auf 75 % bzw. 50 %, bevor Android drosselt. Am PC erscheint der Name des Handys („Galaxy S24 Ultra“, „Xiaomi 14T Pro“) statt eines Modellcodes.
+
+**Samsung und Xiaomi (HyperOS)** beenden Apps gern, wenn der Bildschirm ausgeht. Die App zeigt dafür eine Karte: *Von Akku-Optimierung ausnehmen* und bei Xiaomi zusätzlich *Autostart erlauben*. Mit *Bildschirm abdunkeln* bleibt der Stream bei schwarzem Bildschirm und geringster Helligkeit an. Das spart Akku und hält das Handy kühler.
 
 ## Download
 
@@ -61,7 +76,7 @@ In der PC-App unter *Virtuelle Kamera* einmal **Einrichten** klicken. Das lädt 
 
 | Verbindung | So geht es |
 |---|---|
-| **USB** | USB-Debugging einschalten (*Einstellungen*, *Über das Telefon*, 7 mal auf *Build-Nummer*, dann *Entwickleroptionen*). Kabel stecken, die Anfrage am Handy bestätigen. Die PC-App richtet alles selbst ein und kann die Handy-App per Knopf starten. |
+| **USB** | USB-Debugging einschalten: Entwickleroptionen freischalten (Samsung: *Einstellungen*, *Telefoninfo*, *Softwareinformationen*, 7 mal auf *Buildnummer*; Xiaomi/HyperOS: *Einstellungen*, *Über das Telefon*, 7 mal auf *OS-Version*), dann in den *Entwickleroptionen* (Xiaomi: unter *Zusätzliche Einstellungen*) *USB-Debugging* an. Kabel stecken, die Anfrage am Handy bestätigen. Die PC-App richtet alles selbst ein und kann die Handy-App per Knopf starten. |
 | **WLAN** | Handy und PC im selben Netz. Die App findet den PC selbst. PIN aus der PC-App eingeben. Beim ersten Mal zeigt das Handy einen Schlüssel: Er muss mit dem *Schlüssel* in der PC-App übereinstimmen. |
 | **USB + WLAN** | Kabel stecken und WLAN an. Das Handy startet über USB und nimmt WLAN als zweiten Weg dazu. |
 
@@ -96,9 +111,15 @@ In der PC-App unter *Virtuelle Kamera* einmal **Einrichten** klicken. Das lädt 
 </details>
 
 <details>
+<summary><b>Verbunden, aber kein Bild</b></summary>
+
+Die PC-App zeigt „Warte auf das erste Bild“, solange vom Handy nichts ankommt. Die Handy-App versucht nach 4 Sekunden ohne Bild von selbst den nächstkleineren Modus. Hilft das nicht, am Handy unter *Einstellungen* die Auflösung auf 1080p oder 720p und den Codec auf H.264 stellen. Meldet ffmpeg einen Fehler, steht er in der PC-App unter der Vorschau.
+</details>
+
+<details>
 <summary><b>„Phone-Cam“ fehlt in der Video-App</b></summary>
 
-In der PC-App *Einrichten* klicken, dann die Video-App neu starten. Von Hand:
+In der PC-App *Einrichten* klicken, dann die Video-App neu starten. Kann ffmpeg nicht in die virtuelle Kamera schreiben, läuft die Vorschau trotzdem weiter und die PC-App zeigt den Grund im Feld *Virtuelle Kamera*. Von Hand:
 
 ```bash
 sudo modprobe v4l2loopback exclusive_caps=1 card_label=Phone-Cam video_nr=42
@@ -141,7 +162,7 @@ flowchart LR
   end
 ```
 
-Jedes Bild bekommt eine laufende Nummer. Das Handy schickt es über die Verbindung, in der gerade am wenigsten wartet. Der PC sortiert die Bilder wieder. Fehlt eines länger als 150 ms, macht er beim nächsten Schlüsselbild weiter und fordert eines an.
+Jedes Bild bekommt eine laufende Nummer. Das Handy schickt es über USB, solange dort wenig wartet, sonst über die Verbindung, in der am wenigsten wartet. Der PC sortiert die Bilder wieder. Fehlt eines länger als 150 ms, macht er beim nächsten Schlüsselbild weiter und fordert eines an. Die virtuelle Kamera bekommt standardmäßig höchstens 1080p (einstellbar), das spart am PC viel Rechenzeit.
 
 ## Selbst bauen
 

@@ -1,6 +1,6 @@
 [package]
 name = "phone-cam"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 description = "Phone-Cam PC app: receives the phone camera over USB or Wi-Fi and exposes it as a virtual webcam"
 license = "MIT"

@@ -41,6 +41,11 @@
                 <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="15" y="5" width="18" height="38" rx="5"/><circle cx="24" cy="21" r="5.5"/><path d="M21 37h6"/></svg>
                 <h2 data-i18n="home.waiting.title"></h2>
                 <p data-i18n="home.waiting.text"></p>
+                <p class="note error" id="last-error" hidden></p>
+              </div>
+              <div class="pic-wait" id="pic-wait" role="status" hidden>
+                <span class="spinner" aria-hidden="true"></span>
+                <span id="pic-wait-text" data-i18n="home.picture.wait"></span>
               </div>
               <span class="live-tag" id="live-tag" hidden><i class="dot" aria-hidden="true"></i><span data-i18n="home.live"></span></span>
             </div>
@@ -91,6 +96,7 @@
                 <label class="check"><input type="checkbox" id="vcam-persist" checked><span data-i18n="vcam.persist"></span></label>
               </div>
               <p class="note error" id="vcam-error" hidden></p>
+              <p class="note error" id="vcam-stream-error" hidden></p>
             </section>
           </div>
         </div>
@@ -157,6 +163,18 @@
                   <p class="row-hint" data-i18n="settings.mirror.hint"></p>
                 </div>
                 <button class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="l-mirror" id="mirror"><span class="switch-knob"></span></button>
+              </div>
+              <div class="row">
+                <div class="row-text">
+                  <span class="row-label" id="l-vmax" data-i18n="settings.vcamMax"></span>
+                  <p class="row-hint" data-i18n="settings.vcamMax.hint"></p>
+                </div>
+                <div class="seg" id="vmax-seg" role="radiogroup" aria-labelledby="l-vmax">
+                  <span class="seg-thumb" aria-hidden="true"></span>
+                  <button type="button" role="radio" data-vmax="0" data-i18n="vcamMax.original"></button>
+                  <button type="button" role="radio" data-vmax="1080">1080p</button>
+                  <button type="button" role="radio" data-vmax="720">720p</button>
+                </div>
               </div>
             </div>
           </section>

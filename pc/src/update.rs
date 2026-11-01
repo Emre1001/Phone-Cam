@@ -96,5 +96,5 @@ pub fn install(sh: &Arc<Shared>, url: String, size: u64, digest: String) {
     let _ = std::fs::remove_dir_all(&dir);
     sh.update(|s| s.update_pct = 100);
     let _ = std::process::Command::new(&exe).arg("--after-update").spawn();
-    sh.update(|s| s.quit = true);
+    sh.quit();
 }

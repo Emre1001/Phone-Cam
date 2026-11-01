@@ -17,6 +17,8 @@ data class Snap(
     val links: List<Pair<String, Int>> = emptyList(),
     /** PC identity key: the one in use, or the one waiting for the user's trust (Err.UNTRUSTED). */
     val pcKey: ByteArray? = null,
+    /** The phone is warm: the bitrate is lowered to keep it from throttling. */
+    val hot: Boolean = false,
 ) {
     enum class State { IDLE, SEARCHING, CONNECTING, WAITING, LIVE }
 }

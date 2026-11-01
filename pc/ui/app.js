@@ -74,7 +74,10 @@
   }
   function syncSegs() {
     setChecked($('theme-seg'), 'data-theme-pref', storedTheme(), false);
-    if (state) setChecked($('rot-seg'), 'data-rot', state.rotation, false);
+    if (state) {
+      setChecked($('rot-seg'), 'data-rot', state.rotation, false);
+      setChecked($('vmax-seg'), 'data-vmax', state.vcamMax, false);
+    }
   }
   function radioKeys(seg) {
     seg.addEventListener('keydown', function (e) {
@@ -96,7 +99,7 @@
     $('open-settings').hidden = route !== 'home';
     $('title').textContent = route === 'home' ? t('app.name') : t('settings.title');
     $('title').dataset.i18n = route === 'home' ? 'app.name' : 'settings.title';
-    if (route === 'settings') { placeThumb($('theme-seg')); placeThumb($('rot-seg')); }
+    if (route === 'settings') { placeThumb($('theme-seg')); placeThumb($('rot-seg')); placeThumb($('vmax-seg')); }
     $('page').parentElement.scrollTop = 0;
   }
   function onRoute(e) {
@@ -115,20 +118,22 @@
     var s = state, sess = s.session;
 
     var pill = $('pill');
-    pill.dataset.state = sess ? 'live' : (!s.ffmpeg ? 'warn' : 'idle');
-    $('pill-text').textContent = sess ? t('status.live') : (!s.ffmpeg ? t('status.noffmpeg') : t('status.waiting'));
+    var live = !!(sess && sess.picture);
+    pill.dataset.state = live ? 'live' : sess ? 'idle' : (!s.ffmpeg ? 'warn' : 'idle');
+    $('pill-text').textContent = live ? t('status.live') : sess ? t('status.connecting') : (!s.ffmpeg ? t('status.noffmpeg') : t('status.waiting'));
 
     $('idle').hidden = !!sess;
-    $('live-tag').hidden = !sess;
+    $('live-tag').hidden = !live;
     $('stats').hidden = !sess;
     $('stage-actions').hidden = !sess;
-    var img = $('preview');
-    if (sess && img.hidden) { img.src = '/preview.mjpeg?' + Date.now(); img.hidden = false; }
-    if (!sess && !img.hidden) { img.hidden = true; img.removeAttribute('src'); }
+    renderPreview(sess);
+    var err = $('last-error');
+    err.hidden = !!sess || !s.lastError;
+    if (!err.hidden) err.textContent = t('error.session', { error: s.lastError });
     if (sess) {
       $('s-phone').textContent = sess.phone;
       $('s-via').textContent = sess.links.map(function (l) { return t(l.via === 'usb' ? 'via.usb' : 'via.wifi'); }).join(' + ') + ' · ' + t('via.encrypted');
-      $('s-video').textContent = sess.outW + '×' + sess.outH + ' @ ' + sess.liveFps + ' · ' + sess.codec;
+      $('s-video').textContent = sess.outW + '×' + sess.outH + ' @ ' + sess.liveFps + ' fps · ' + sess.codec;
       $('s-rate').textContent = sess.links.length > 1
         ? sess.links.map(function (l) { return fmtKbps(l.kbps); }).join(' + ')
         : fmtKbps(sess.kbps);
@@ -146,6 +151,26 @@
     if (document.activeElement !== $('pc-name')) $('pc-name').value = s.name;
     $('mirror').setAttribute('aria-checked', String(s.mirror));
     setChecked($('rot-seg'), 'data-rot', s.rotation, true);
+    setChecked($('vmax-seg'), 'data-vmax', s.vcamMax, true);
+  }
+
+  /* Preview: one MJPEG stream that survives reconnects. Until the first picture a waiting note shows,
+     a broken stream is reopened. */
+  var previewRetry = 0;
+  function openPreview() {
+    var img = $('preview');
+    img.src = '/preview.mjpeg?' + Date.now();
+  }
+  function renderPreview(sess) {
+    var img = $('preview'), wait = $('pic-wait');
+    var showPic = !!(sess && sess.picture);
+    if (sess && !img.getAttribute('src')) openPreview();
+    if (!sess && img.getAttribute('src')) { img.removeAttribute('src'); clearTimeout(previewRetry); }
+    img.hidden = !showPic;
+    wait.hidden = !sess || showPic;
+    if (sess && !showPic) {
+      $('pic-wait-text').textContent = sess.seconds >= 6 && !sess.frames ? t('home.picture.slow') : t('home.picture.wait');
+    }
   }
 
   function renderUsb(s) {
@@ -177,13 +202,15 @@
   }
 
   function renderVcam(s) {
-    var text = $('vcam-text'), actions = $('vcam-actions'), err = $('vcam-error');
+    var text = $('vcam-text'), actions = $('vcam-actions'), err = $('vcam-error'), serr = $('vcam-stream-error');
+    serr.hidden = !s.vcam.streamError;
+    if (s.vcam.streamError) serr.textContent = t('vcam.streamFailed', { error: s.vcam.streamError });
     actions.hidden = true;
     err.hidden = !s.vcam.error;
     if (s.vcam.error) err.textContent = t('vcam.failed', { error: s.vcam.error });
     if (!s.ffmpeg) text.textContent = t('vcam.noffmpeg');
     else if (s.os !== 'linux') text.textContent = t('vcam.windows');
-    else if (s.vcam.device) text.textContent = t('vcam.ready', { device: s.vcam.device });
+    else if (s.vcam.device) text.textContent = s.session && s.session.vcam ? t('vcam.active', { device: s.vcam.device }) : t('vcam.ready', { device: s.vcam.device });
     else {
       text.textContent = s.vcam.busy ? t('vcam.busy') : t('vcam.missing');
       actions.hidden = false;
@@ -211,7 +238,17 @@
       var b = e.target.closest('[data-rot]');
       if (b) { post('/api/settings', { rotation: b.dataset.rot }); setChecked($('rot-seg'), 'data-rot', b.dataset.rot, true); }
     });
-    radioKeys($('theme-seg')); radioKeys($('rot-seg'));
+    $('vmax-seg').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-vmax]');
+      if (b) { post('/api/settings', { vcam_max: b.dataset.vmax }); setChecked($('vmax-seg'), 'data-vmax', b.dataset.vmax, true); }
+    });
+    radioKeys($('theme-seg')); radioKeys($('rot-seg')); radioKeys($('vmax-seg'));
+    $('preview').addEventListener('error', function () {
+      // The stream ended (PC app restarted, session gap): reopen it while a session runs.
+      $('preview').removeAttribute('src');
+      clearTimeout(previewRetry);
+      previewRetry = setTimeout(function () { if (state && state.session) openPreview(); }, 800);
+    });
     $('mirror').addEventListener('click', function () {
       var on = $('mirror').getAttribute('aria-checked') !== 'true';
       $('mirror').setAttribute('aria-checked', String(on));
@@ -234,15 +271,18 @@
     applyTheme(storedTheme());
     syncSegs();
 
-    addEventListener('resize', function () { placeThumb($('theme-seg')); placeThumb($('rot-seg')); });
+    addEventListener('resize', function () { placeThumb($('theme-seg')); placeThumb($('rot-seg')); placeThumb($('vmax-seg')); });
     connect();
   }
   var currentRoute = 'home';
 
   function connect() {
-    fetch('/api/state').then(function (r) { return r.json(); }).then(function (s) { state = s; render(); startUpdates(); });
+    fetch('/api/state').then(function (r) { return r.json(); }).then(function (s) { state = s; render(); startUpdates(); }).catch(function () {});
     var es = new EventSource('/api/events');
-    es.onmessage = function (e) { state = JSON.parse(e.data); render(); };
+    es.onmessage = function (e) {
+      try { state = JSON.parse(e.data); } catch (err) { return; }
+      render(); startUpdates();
+    };
     es.onerror = function () { /* the core quit or restarts; EventSource reconnects by itself */ };
   }
 

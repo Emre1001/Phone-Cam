@@ -59,9 +59,13 @@ class MainActivity : ComponentActivity() {
     private lateinit var backBtn: ImageView
     private lateinit var gearBtn: ImageView
     private var pendingStart = false
+    private lateinit var hotLine: TextView
+    private lateinit var dimBtn: TextView
+    private lateinit var batteryCard: LinearLayout
+    private var dimOverlay: View? = null
 
     private val back = object : OnBackPressedCallback(false) {
-        override fun handleOnBackPressed() { showPage(false) }
+        override fun handleOnBackPressed() { if (dimOverlay != null) undim() else showPage(false) }
     }
 
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
@@ -118,6 +122,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (UpdatePopup.handoff) { UpdatePopup.handoff = false; UpdateManager(this).deleteInstallerFiles() }
+        if (::batteryCard.isInitialized) batteryCard.visibility = if (Device.ignoresBatteryOptimizations(this)) View.GONE else View.VISIBLE
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -283,10 +288,30 @@ class MainActivity : ComponentActivity() {
         stream.addView(maxLine, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
         add(stream, 12)
 
+        hotLine = text(context, pal, getString(R.string.hot), 13f).apply { setTextColor(pal.danger); visibility = View.GONE }
+        stream.addView(hotLine, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+
         startBtn = button(context, pal, getString(R.string.btn_start), Kind.PRIMARY) { toggle() }
         add(startBtn, 16)
+        dimBtn = button(context, pal, getString(R.string.dim)) { dim() }.apply { visibility = View.GONE }
+        add(dimBtn, 10)
         errorLine = text(context, pal, "", 13.5f).apply { setTextColor(pal.danger); visibility = View.GONE }
         add(errorLine, 12)
+
+        // Android may end the stream with the screen off unless the app is exempt from battery optimisation.
+        batteryCard = card(context, pal).apply {
+            addView(text(context, pal, getString(R.string.battery_title), 13f, true))
+            addView(text(context, pal, getString(if (Device.isXiaomi) R.string.battery_text_xiaomi else R.string.battery_text), 13f, muted = true),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+            addView(button(context, pal, getString(R.string.battery_allow)) { openSafely(Device.batteryIntent(this@MainActivity)) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+            Device.autostartIntent(this@MainActivity)?.let { intent ->
+                addView(button(context, pal, getString(R.string.battery_autostart)) { openSafely(intent) },
+                    LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+            }
+            visibility = if (Device.ignoresBatteryOptimizations(this@MainActivity)) View.GONE else View.VISIBLE
+        }
+        add(batteryCard, 14)
         add(text(context, pal, getString(R.string.about_tip), 12.5f, muted = true), 14)
         updateModeViews(false)
         updateStreamLine()
@@ -335,7 +360,7 @@ class MainActivity : ComponentActivity() {
         searching = true
         searchBtn.text = getString(R.string.wifi_searching)
         Thread {
-            val found = Discovery.find()
+            val found = Discovery.find(network = findWifiNetwork(this))
             runOnUiThread {
                 searching = false
                 pcs = found
@@ -406,6 +431,9 @@ class MainActivity : ComponentActivity() {
         }
         errorLine.text = err
         errorLine.visibility = if (err.isEmpty()) View.GONE else View.VISIBLE
+        hotLine.visibility = if (s.state == Snap.State.LIVE && s.hot) View.VISIBLE else View.GONE
+        dimBtn.visibility = if (s.state == Snap.State.LIVE) View.VISIBLE else View.GONE
+        if (s.state == Snap.State.IDLE && dimOverlay != null) undim()
         if (s.state == Snap.State.LIVE && s.mode != null) {
             streamLine.text = getString(R.string.quality_value, s.mode.width.toString(), s.mode.height.toString(), s.fps.toString(), s.mode.codecName, getString(R.string.bitrate_value, "%.1f".format(s.kbps / 1000.0)))
             val links = s.links.joinToString(" + ") { (via, kbps) ->
@@ -460,23 +488,27 @@ class MainActivity : ComponentActivity() {
         val fpsItems = listOf("0" to getString(R.string.fps_auto)) + avail.map { it.third }.distinct().map { it.toString() to "$it fps" }
         group(R.string.camera, listOf(
             stackedRow(R.string.facing, null, Segmented(context, pal, listOf(getString(R.string.facing_back), getString(R.string.facing_front)), if (prefs.front) 1 else 0) {
-                prefs.front = it == 1; updateStreamLine(); recreateSettingsLater()
+                prefs.front = it == 1; Caps.failed.clear(); updateStreamLine(); recreateSettingsLater()
             }),
             pickerRow(R.string.resolution, resItems.firstOrNull { it.first == prefs.maxHeight.toString() }?.second ?: getString(R.string.res_auto)) {
-                sheet(this@MainActivity, pal, getString(R.string.resolution), resItems, prefs.maxHeight.toString()) { prefs.maxHeight = it.toInt(); updateStreamLine(); refreshSettings() }.show()
+                sheet(this@MainActivity, pal, getString(R.string.resolution), resItems, prefs.maxHeight.toString()) { prefs.maxHeight = it.toInt(); Caps.failed.clear(); updateStreamLine(); refreshSettings() }.show()
             },
             pickerRow(R.string.fps, if (prefs.maxFps == 0) getString(R.string.fps_auto) else "${prefs.maxFps} fps") {
-                sheet(this@MainActivity, pal, getString(R.string.fps), fpsItems, prefs.maxFps.toString()) { prefs.maxFps = it.toInt(); updateStreamLine(); refreshSettings() }.show()
+                sheet(this@MainActivity, pal, getString(R.string.fps), fpsItems, prefs.maxFps.toString()) { prefs.maxFps = it.toInt(); Caps.failed.clear(); updateStreamLine(); refreshSettings() }.show()
             },
             pickerRow(R.string.codec, when (prefs.codec) { "h264" -> "H.264"; "hevc" -> "HEVC"; else -> getString(R.string.codec_auto) }) {
-                sheet(this@MainActivity, pal, getString(R.string.codec), listOf("auto" to getString(R.string.codec_auto), "hevc" to "HEVC", "h264" to "H.264"), prefs.codec) { prefs.codec = it; updateStreamLine(); refreshSettings() }.show()
+                sheet(this@MainActivity, pal, getString(R.string.codec), listOf("auto" to getString(R.string.codec_auto), "hevc" to "HEVC", "h264" to "H.264"), prefs.codec) { prefs.codec = it; Caps.failed.clear(); updateStreamLine(); refreshSettings() }.show()
             },
+            row(getString(R.string.stabilize), text(context, pal, getString(R.string.stabilize_hint), 13f, muted = true),
+                Toggle(context, pal, prefs.stabilize) { prefs.stabilize = it }),
             pickerRow(R.string.bitrate, if (prefs.bitrateMbit == 0) getString(R.string.bitrate_auto) else getString(R.string.bitrate_value, prefs.bitrateMbit.toString())) {
                 val items = listOf("0" to getString(R.string.bitrate_auto)) + listOf(8, 16, 30, 50, 80).map { it.toString() to getString(R.string.bitrate_value, it.toString()) }
-                sheet(this@MainActivity, pal, getString(R.string.bitrate), items, prefs.bitrateMbit.toString()) { prefs.bitrateMbit = it.toInt(); updateStreamLine(); refreshSettings() }.show()
+                sheet(this@MainActivity, pal, getString(R.string.bitrate), items, prefs.bitrateMbit.toString()) { prefs.bitrateMbit = it.toInt(); Caps.failed.clear(); updateStreamLine(); refreshSettings() }.show()
             },
         ))
         add(text(context, pal, getString(R.string.quality_hint), 12.5f, muted = true).apply { setPadding(dp(4), dp(8), dp(4), 0) })
+        add(text(context, pal, getString(R.string.this_phone, Device.summary(context, Caps.resolve(context, prefs)?.encoder)), 12.5f, muted = true)
+            .apply { setPadding(dp(4), dp(6), dp(4), 0) })
 
         val status = text(context, pal, "", 13f, muted = true)
         val check = button(context, pal, getString(R.string.update_check)) { }
@@ -496,6 +528,44 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun recreateSettingsLater() = refreshSettings()
+
+    private fun openSafely(intent: Intent) {
+        try { startActivity(intent) } catch (_: Exception) {
+            try { startActivity(Device.appInfoIntent(this)) } catch (_: Exception) {}
+        }
+    }
+
+    /* ---------- Dimmed screen while live: OLED black, lowest brightness, the stream keeps running ---------- */
+    private fun dim() {
+        if (dimOverlay != null) return
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            isClickable = true
+            setOnClickListener { undim() }
+            addView(TextView(context).apply {
+                text = getString(R.string.dim_hint)
+                setTextColor(0x66FFFFFF)
+                textSize = 13f
+                gravity = Gravity.CENTER
+            }, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+        }
+        root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
+        dimOverlay = overlay
+        back.isEnabled = true
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
+    private fun undim() {
+        dimOverlay?.let { root.removeView(it) }
+        dimOverlay = null
+        back.isEnabled = onSettings
+        window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+        WindowCompat.getInsetsController(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
+    }
 
     private fun refreshSettings() {
         val vis = settingsScroll.visibility

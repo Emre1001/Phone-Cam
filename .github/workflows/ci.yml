@@ -1,0 +1,29 @@
+name: ci
+# Builds and tests every push and pull request, so a broken build shows up before a release tag.
+on:
+  push:
+    branches-ignore: [gh-pages]
+    paths: ['pc/**', 'android/**', '.github/workflows/ci.yml']
+  pull_request:
+    paths: ['pc/**', 'android/**', '.github/workflows/ci.yml']
+permissions:
+  contents: read
+jobs:
+  pc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: cargo test --release
+        working-directory: pc
+      - run: cargo build --release
+        working-directory: pc
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
